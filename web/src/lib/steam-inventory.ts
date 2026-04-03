@@ -233,17 +233,23 @@ async function fetchViaCommunity(
   steamId64: string,
 ): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
   const url = `https://steamcommunity.com/inventory/${steamId64}/${CS2_APP_ID}/${CONTEXT_ID}?l=english&count=5000`;
-  console.log(`[steam-inv] community fetch: ${steamId64}`);
+  console.log(`[steam-inv] community fetch: ${url}`);
 
   const res = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0 CS2Trade/1.0" },
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      Accept: "application/json, text/javascript;q=0.9, */*;q=0.8",
+      Referer: `https://steamcommunity.com/profiles/${steamId64}/inventory/`,
+    },
     next: { revalidate: 0 },
   });
 
   if (res.status === 403) return { ok: false, error: "private_inventory" };
   if (res.status === 429) return { ok: false, error: "steam_rate_limit" };
   if (!res.ok) {
-    console.error(`[steam-inv] community HTTP ${res.status}`);
+    const body = await res.text().catch(() => "");
+    console.error(`[steam-inv] community HTTP ${res.status}: ${body.slice(0, 500)}`);
     return { ok: false, error: `steam_http_${res.status}` };
   }
 
@@ -272,7 +278,12 @@ async function fetchViaApi(
   const json = await res.json();
   const data = (json as Record<string, unknown>)?.response as Record<string, unknown> | undefined;
   if (!data || (!data.assets && !data.descriptions)) {
-    console.error(`[steam-inv] API empty response`, JSON.stringify(json).slice(0, 300));
+    const totalCount = data?.total_inventory_count;
+    console.error(`[steam-inv] API empty response (total_inventory_count=${totalCount})`, JSON.stringify(json).slice(0, 500));
+    // total_inventory_count=0 with valid response means private or genuinely empty
+    if (totalCount === 0 || totalCount === undefined) {
+      return { ok: false, error: "empty_or_private_inventory" };
+    }
     return { ok: false, error: "empty_inventory" };
   }
   return { ok: true, data };

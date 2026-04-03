@@ -99,7 +99,7 @@ export default function TradePage() {
       setOwnerItems(data.items);
     } else {
       console.error("Owner inventory error:", data);
-      setError(`Инвентарь магазина: ${data?.error ?? "ошибка загрузки"}`);
+      setError(data?.message ?? `Инвентарь магазина: ${data?.error ?? "ошибка загрузки"}`);
     }
   }, []);
 

@@ -23,7 +23,18 @@ export async function GET() {
     const result = await fetchOwnerInventory();
     if (!result.ok) {
       console.error("[/api/inventory/owner] fetch failed:", result.error);
-      return NextResponse.json({ error: result.error }, { status: 502 });
+      const messages: Record<string, string> = {
+        empty_or_private_inventory:
+          "Инвентарь пуст или приватный. Откройте Steam → Профиль → Настройки приватности → Инвентарь: Открытый.",
+        private_inventory: "Инвентарь приватный. Измените настройки приватности в Steam.",
+        steam_rate_limit: "Steam ограничил запросы. Подождите минуту.",
+        missing_steam_api_key: "Не задан STEAM_WEB_API_KEY на сервере.",
+        missing_owner_steam_id: "Не задан OWNER_STEAM_ID на сервере.",
+      };
+      return NextResponse.json(
+        { error: result.error, message: messages[result.error] ?? result.error },
+        { status: 502 },
+      );
     }
     items = result.items;
     console.log(`[/api/inventory/owner] loaded ${items.length} items`);
