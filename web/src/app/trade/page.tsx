@@ -574,7 +574,8 @@ function RarityBar({ color }: { color: string }) {
 }
 
 function ItemCard({ item, isSelected, onToggle }: { item: InventoryItem; isSelected: boolean; onToggle: () => void }) {
-  const isLocked = !!item.tradeLockUntil && new Date(item.tradeLockUntil) > new Date();
+  const hasTimedLock = !!item.tradeLockUntil && new Date(item.tradeLockUntil) > new Date();
+  const isLocked = !item.tradable || hasTimedLock;
   const isUnavailable = item.belowThreshold && item.priceSource !== "manual";
   const disabled = isLocked || isUnavailable;
   const wearShort = item.wear ? WEAR_SHORT[item.wear] ?? item.wear : null;
@@ -613,7 +614,7 @@ function ItemCard({ item, isSelected, onToggle }: { item: InventoryItem; isSelec
         {/* Trade lock */}
         {isLocked && (
           <div className="absolute right-1 top-1 flex items-center gap-0.5 rounded bg-orange-700/80 px-1 py-0.5 text-[8px] font-medium text-orange-100">
-            🔒 {fmtLock(item.tradeLockUntil!)}
+            🔒 {hasTimedLock ? fmtLock(item.tradeLockUntil!) : "Locked"}
           </div>
         )}
 

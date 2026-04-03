@@ -37,7 +37,9 @@ export async function GET() {
       );
     }
     items = result.items;
-    console.log(`[/api/inventory/owner] loaded ${items.length} items`);
+    const locked = items.filter((i) => !i.tradable).length;
+    const withLockDate = items.filter((i) => !!i.tradeLockUntil).length;
+    console.log(`[/api/inventory/owner] loaded ${items.length} items (tradable=false: ${locked}, withLockDate: ${withLockDate})`);
     setCache(ownerSteamId, items);
   }
 

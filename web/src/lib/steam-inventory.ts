@@ -178,12 +178,21 @@ function detectTradeLock(
   if (!descriptions) return null;
   for (const d of descriptions) {
     const val = d.value ?? "";
-    const m = /Tradable After\s+(.+)/i.exec(val);
-    if (m) {
-      try {
-        return new Date(m[1].replace(/\s*\(.*\)/, "")).toISOString();
-      } catch {
-        return m[1];
+
+    const patterns = [
+      /Tradable After\s+(.+)/i,
+      /(?:cannot be (?:traded|consumed|modified|transferred) until|trade cooldown[^:]*:\s*)(.+)/i,
+      /(?:Trade Protected|Торговая блокировка)[^a-zA-Z]*(?:until|до)\s+(.+)/i,
+    ];
+    for (const re of patterns) {
+      const m = re.exec(val);
+      if (m) {
+        const raw = m[1].replace(/\s*\(.*\)/, "").replace(/\s*GMT.*/, "").trim();
+        try {
+          const parsed = new Date(raw);
+          if (!isNaN(parsed.getTime())) return parsed.toISOString();
+        } catch { /* fall through */ }
+        return raw;
       }
     }
   }
