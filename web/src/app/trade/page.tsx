@@ -294,26 +294,41 @@ export default function TradePage() {
                 </a>
               </div>
             ) : !hasTradeUrl || editingTradeUrl ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
-                <p className="text-sm text-zinc-400">
-                  {hasTradeUrl ? "Обновите trade-ссылку:" : "Вставьте вашу trade-ссылку для загрузки инвентаря:"}
+              <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-600/20 text-3xl">🔗</div>
+                <h3 className="text-base font-bold text-zinc-100">
+                  {hasTradeUrl ? "Обновите trade-ссылку" : "Вставьте вашу trade-ссылку"}
+                </h3>
+                <p className="max-w-xs text-center text-xs text-zinc-500">
+                  Для загрузки вашего инвентаря нужна ваша trade-ссылка Steam. Можно вставить <strong className="text-zinc-400">только свою</strong> ссылку.
                 </p>
-                <p className="text-[11px] text-zinc-600">
-                  <a href="https://steamcommunity.com/my/tradeoffers/privacy#trade_offer_access_url" target="_blank" rel="noopener noreferrer" className="text-amber-500/70 hover:underline">
-                    Где найти trade-ссылку?
-                  </a>
-                </p>
-                <div className="flex w-full max-w-md gap-2">
+                <div className="flex w-full max-w-sm flex-col gap-2">
                   <input
                     type="text"
                     placeholder="https://steamcommunity.com/tradeoffer/new/?partner=...&token=..."
-                    className="flex-1 rounded-lg border border-zinc-700/60 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-600/50 focus:outline-none"
+                    className="w-full rounded-lg border-2 border-amber-600/40 bg-zinc-800/80 px-3 py-2.5 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none"
                     value={tradeUrl}
                     onChange={(e) => setTradeUrl(e.target.value)}
                   />
-                  <button onClick={saveTradeUrl} className="rounded-lg bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-500">Сохранить</button>
-                  {hasTradeUrl && <button onClick={() => setEditingTradeUrl(false)} className="rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-400">Отмена</button>}
+                  <div className="flex gap-2">
+                    <button onClick={saveTradeUrl} className="flex-1 rounded-lg bg-amber-600 py-2.5 text-xs font-bold text-white hover:bg-amber-500 transition-colors">
+                      Сохранить и загрузить инвентарь
+                    </button>
+                    {hasTradeUrl && (
+                      <button onClick={() => setEditingTradeUrl(false)} className="rounded-lg border border-zinc-700 px-4 py-2.5 text-xs text-zinc-400 hover:text-zinc-200">
+                        Отмена
+                      </button>
+                    )}
+                  </div>
                 </div>
+                <a
+                  href="https://steamcommunity.com/my/tradeoffers/privacy#trade_offer_access_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-amber-500/70 hover:text-amber-400 hover:underline"
+                >
+                  Где найти trade-ссылку? →
+                </a>
               </div>
             ) : (
               <>
