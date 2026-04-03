@@ -345,28 +345,61 @@ const BROWSER_HEADERS = {
 async function fetchViaCommunityNew(
   steamId64: string,
 ): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
-  const url = `https://steamcommunity.com/inventory/${steamId64}/${CS2_APP_ID}/${CONTEXT_ID}?l=english&count=2000`;
-  console.log(`[steam-inv] strategy=community-new`);
+  console.log(`[steam-inv] strategy=community-new (paginated)`);
 
-  try {
-    const { status, body } = await httpsGet(url, BROWSER_HEADERS);
-    if (status === 403) return { ok: false, error: "private_inventory" };
-    if (status === 429) return { ok: false, error: "steam_rate_limit" };
-    if (status !== 200) {
-      console.error(`[steam-inv] community-new HTTP ${status}: ${body.slice(0, 300)}`);
-      return { ok: false, error: `steam_http_${status}` };
+  const allAssets: unknown[] = [];
+  const descMap = new Map<string, unknown>();
+  let startAssetId: string | undefined;
+  const MAX_PAGES = 10;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    let url = `https://steamcommunity.com/inventory/${steamId64}/${CS2_APP_ID}/${CONTEXT_ID}?l=english&count=2000`;
+    if (startAssetId) url += `&start_assetid=${startAssetId}`;
+
+    try {
+      const { status, body } = await httpsGet(url, BROWSER_HEADERS);
+      if (status === 403) return { ok: false, error: "private_inventory" };
+      if (status === 429) return { ok: false, error: "steam_rate_limit" };
+      if (status !== 200) {
+        console.error(`[steam-inv] community-new HTTP ${status}: ${body.slice(0, 300)}`);
+        return { ok: false, error: `steam_http_${status}` };
+      }
+      const json = JSON.parse(body);
+      if (page === 0 && !json?.assets && !json?.descriptions) {
+        console.error(`[steam-inv] community-new empty:`, body.slice(0, 300));
+        return { ok: false, error: "empty_inventory" };
+      }
+
+      if (Array.isArray(json.assets)) {
+        allAssets.push(...json.assets);
+      }
+      if (Array.isArray(json.descriptions)) {
+        for (const d of json.descriptions) {
+          const key = `${d.classid}_${d.instanceid}`;
+          if (!descMap.has(key)) descMap.set(key, d);
+        }
+      }
+
+      console.log(`[steam-inv] community-new page=${page}: +${json.assets?.length ?? 0} assets (total=${allAssets.length}, more=${json.more_items ?? 0})`);
+
+      if (!json.more_items || !json.last_assetid) break;
+      startAssetId = json.last_assetid;
+    } catch (e) {
+      console.error(`[steam-inv] community-new error (page=${page}):`, e);
+      if (allAssets.length > 0) break;
+      return { ok: false, error: "community_error" };
     }
-    const json = JSON.parse(body);
-    if (!json?.assets && !json?.descriptions) {
-      console.error(`[steam-inv] community-new empty:`, body.slice(0, 300));
-      return { ok: false, error: "empty_inventory" };
-    }
-    console.log(`[steam-inv] community-new OK: ${json.assets?.length ?? 0} assets`);
-    return { ok: true, data: json };
-  } catch (e) {
-    console.error(`[steam-inv] community-new error:`, e);
-    return { ok: false, error: "community_error" };
   }
+
+  if (allAssets.length === 0) {
+    return { ok: false, error: "empty_inventory" };
+  }
+
+  console.log(`[steam-inv] community-new TOTAL: ${allAssets.length} assets, ${descMap.size} descriptions`);
+  return {
+    ok: true,
+    data: { assets: allAssets, descriptions: Array.from(descMap.values()) },
+  };
 }
 
 // ---------------------------------------------------------------------------
