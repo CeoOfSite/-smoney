@@ -22,15 +22,23 @@ export async function GET() {
   if (!items) {
     const result = await fetchOwnerInventory();
     if (!result.ok) {
+      console.error("[/api/inventory/owner] fetch failed:", result.error);
       return NextResponse.json({ error: result.error }, { status: 502 });
     }
     items = result.items;
+    console.log(`[/api/inventory/owner] loaded ${items.length} items`);
     setCache(ownerSteamId, items);
   }
 
-  const enriched = await enrichWithPrices(items, "owner");
-
-  return NextResponse.json({ items: enriched, count: enriched.length });
+  try {
+    const enriched = await enrichWithPrices(items, "owner");
+    return NextResponse.json({ items: enriched, count: enriched.length });
+  } catch (e) {
+    console.error("[/api/inventory/owner] enrichWithPrices error:", e);
+    return NextResponse.json(
+      { items: items.map((i) => ({ ...i, priceUsd: 0, priceSource: "unavailable", belowThreshold: true })), count: items.length },
+    );
+  }
 }
 
 async function enrichWithPrices(

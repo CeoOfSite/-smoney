@@ -92,44 +92,51 @@ export default function TradePage() {
   const [wearFilter, setWearFilter] = useState("All");
   const [sort, setSort] = useState("price-desc");
 
+  const loadOwner = useCallback(async () => {
+    const res = await fetch("/api/inventory/owner");
+    const data = await res.json().catch(() => null);
+    if (res.ok && data?.items) {
+      setOwnerItems(data.items);
+    } else {
+      console.error("Owner inventory error:", data);
+      setError(`Инвентарь магазина: ${data?.error ?? "ошибка загрузки"}`);
+    }
+  }, []);
+
+  const loadMyInventory = useCallback(async () => {
+    const res = await fetch("/api/inventory/me");
+    const data = await res.json().catch(() => null);
+    if (res.ok && data?.items) {
+      setMyItems(data.items);
+    } else if (data?.error === "trade_url_required") {
+      /* expected — user hasn't set trade URL yet */
+    } else if (data?.error !== "unauthorized") {
+      console.error("My inventory error:", data);
+      setError(`Ваш инвентарь: ${data?.error ?? "ошибка загрузки"}`);
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
-      // Load owner inventory (public)
-      const ownerRes = await fetch("/api/inventory/owner");
-      if (ownerRes.ok) {
-        const data = await ownerRes.json();
-        setOwnerItems(data.items ?? []);
-      }
+      await loadOwner();
 
-      // Check auth
       const meRes = await fetch("/api/auth/me");
       if (meRes.ok) {
         const meData = await meRes.json();
         if (meData.user) {
           setIsLoggedIn(true);
-          // Load trade url status
           const tradeRes = await fetch("/api/profile/trade-url");
           if (tradeRes.ok) {
             const td = await tradeRes.json();
             setHasTradeUrl(td.hasTradeUrl);
             setTradeUrl(td.tradeUrl ?? "");
           }
-          // Load my inventory
-          const myRes = await fetch("/api/inventory/me");
-          if (myRes.ok) {
-            const myData = await myRes.json();
-            setMyItems(myData.items ?? []);
-          } else {
-            const err = await myRes.json().catch(() => null);
-            if (err?.error === "trade_url_required") {
-              setError(null);
-            }
-          }
+          await loadMyInventory();
         }
       }
       setLoading(false);
     })();
-  }, []);
+  }, [loadOwner, loadMyInventory]);
 
   const saveTradeUrl = useCallback(async () => {
     const res = await fetch("/api/profile/trade-url", {

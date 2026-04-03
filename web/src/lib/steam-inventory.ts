@@ -229,29 +229,66 @@ export function normalizeInventory(raw: any): NormalizedItem[] {
 // Fetch inventory via Steam community endpoint
 // ---------------------------------------------------------------------------
 
+async function fetchViaCommunity(
+  steamId64: string,
+): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
+  const url = `https://steamcommunity.com/inventory/${steamId64}/${CS2_APP_ID}/${CONTEXT_ID}?l=english&count=5000`;
+  console.log(`[steam-inv] community fetch: ${steamId64}`);
+
+  const res = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 CS2Trade/1.0" },
+    next: { revalidate: 0 },
+  });
+
+  if (res.status === 403) return { ok: false, error: "private_inventory" };
+  if (res.status === 429) return { ok: false, error: "steam_rate_limit" };
+  if (!res.ok) {
+    console.error(`[steam-inv] community HTTP ${res.status}`);
+    return { ok: false, error: `steam_http_${res.status}` };
+  }
+
+  const json = await res.json();
+  if (!json || (!json.assets && !json.descriptions)) {
+    console.error(`[steam-inv] community empty response`, JSON.stringify(json).slice(0, 300));
+    return { ok: false, error: "empty_inventory" };
+  }
+  return { ok: true, data: json };
+}
+
+async function fetchViaApi(
+  steamId64: string,
+  apiKey: string,
+): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
+  const url = `https://api.steampowered.com/IEconService/GetInventoryItemsWithDescriptions/v1/?key=${apiKey}&steamid=${steamId64}&appid=${CS2_APP_ID}&contextid=${CONTEXT_ID}&get_descriptions=1&count=5000`;
+  console.log(`[steam-inv] API fetch: ${steamId64}`);
+
+  const res = await fetch(url, { next: { revalidate: 0 } });
+
+  if (!res.ok) {
+    console.error(`[steam-inv] API HTTP ${res.status}`);
+    return { ok: false, error: `steam_api_${res.status}` };
+  }
+
+  const json = await res.json();
+  const data = (json as Record<string, unknown>)?.response as Record<string, unknown> | undefined;
+  if (!data || (!data.assets && !data.descriptions)) {
+    console.error(`[steam-inv] API empty response`, JSON.stringify(json).slice(0, 300));
+    return { ok: false, error: "empty_inventory" };
+  }
+  return { ok: true, data };
+}
+
 async function fetchSteamInventoryRaw(
   steamId64: string,
   apiKey?: string,
 ): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
-  // If we have an API key, use the authenticated endpoint (sees trade-locked items)
-  const url = apiKey
-    ? `https://api.steampowered.com/IEconService/GetInventoryItemsWithDescriptions/v1/?key=${apiKey}&steamid=${steamId64}&appid=${CS2_APP_ID}&contextid=${CONTEXT_ID}&get_descriptions=true&count=5000`
-    : `https://steamcommunity.com/inventory/${steamId64}/${CS2_APP_ID}/${CONTEXT_ID}?l=english&count=5000`;
-
-  const res = await fetch(url, { next: { revalidate: 0 } });
-
-  if (res.status === 403) return { ok: false, error: "private_inventory" };
-  if (res.status === 429) return { ok: false, error: "steam_rate_limit" };
-  if (!res.ok) return { ok: false, error: `steam_http_${res.status}` };
-
-  const json = await res.json();
-
-  // Authenticated endpoint wraps under response
-  const data = apiKey ? (json as any)?.response : json;
-  if (!data || (!data.assets && !data.descriptions)) {
-    return { ok: false, error: "empty_inventory" };
+  // Try IEconService API first (sees trade-locked items); fallback to community endpoint
+  if (apiKey) {
+    const apiResult = await fetchViaApi(steamId64, apiKey);
+    if (apiResult.ok) return apiResult;
+    console.warn(`[steam-inv] API failed, trying community fallback…`);
   }
-  return { ok: true, data };
+  return fetchViaCommunity(steamId64);
 }
 
 // ---------------------------------------------------------------------------
