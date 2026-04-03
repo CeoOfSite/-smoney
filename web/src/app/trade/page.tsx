@@ -294,9 +294,9 @@ export default function TradePage() {
           />
 
           {/* Content */}
-          <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {!isLoggedIn ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+              <div className="flex h-full min-h-[300px] flex-col items-center justify-center gap-4 p-8 text-center">
                 <div className="text-5xl opacity-20">🎮</div>
                 <p className="text-sm text-zinc-500">Войдите через Steam, чтобы начать обменивать ваши CS2 скины на нашей платформе.</p>
                 <a href="/api/auth/steam" className="rounded-lg bg-amber-600 px-6 py-2 text-sm font-semibold text-white hover:bg-amber-500">
@@ -304,7 +304,7 @@ export default function TradePage() {
                 </a>
               </div>
             ) : !hasTradeUrl || editingTradeUrl ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
+              <div className="flex h-full min-h-[350px] flex-col items-center justify-center gap-4 p-6">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-600/20 text-3xl">🔗</div>
                 <h3 className="text-base font-bold text-zinc-100">
                   {hasTradeUrl ? "Обновите trade-ссылку" : "Вставьте вашу trade-ссылку"}
@@ -710,8 +710,22 @@ function ItemCard({ item, isSelected, onToggle }: { item: InventoryItem; isSelec
         {item.floatValue != null && (
           <div className="mt-0.5">
             <p className="text-[10px] font-medium text-emerald-400">Float: {item.floatValue.toFixed(item.floatValue < 0.01 ? 6 : 4)}</p>
-            <div className="mt-0.5 h-1 w-full rounded-full bg-zinc-800 overflow-hidden">
-              <div className="h-full rounded-full" style={{ width: `${Math.min(item.floatValue * 100, 100)}%`, background: floatBarColor(item.floatValue) }} />
+            <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-zinc-800">
+              <svg
+                className="block h-full w-full"
+                viewBox="0 0 100 1"
+                preserveAspectRatio="none"
+                aria-hidden
+              >
+                <rect
+                  x={0}
+                  y={0}
+                  width={Math.min(item.floatValue * 100, 100)}
+                  height={1}
+                  fill={floatBarColor(item.floatValue)}
+                  rx={0.5}
+                />
+              </svg>
             </div>
           </div>
         )}
