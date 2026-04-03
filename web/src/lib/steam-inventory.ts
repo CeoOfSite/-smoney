@@ -114,21 +114,25 @@ function extractStickers(
     if (!d.value?.includes("sticker_info")) continue;
     const html = d.value;
 
-    const re = /<img[^>]+src="([^"]+)"[^>]*>\s*(?:<br\s*\/?\s*>)\s*([^<]+)/gi;
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(html)) !== null) {
-      const url = match[1];
-      const name = match[2].trim();
-      if (url && name) stickers.push({ iconUrl: url, name });
-    }
+    const imgTags = html.match(/<img[^>]+>/gi) ?? [];
+    for (const tag of imgTags) {
+      const srcMatch = /src="([^"]+)"/.exec(tag);
+      if (!srcMatch) continue;
+      const url = srcMatch[1];
 
-    if (stickers.length === 0) {
-      const altRe = /<img[^>]+src="([^"]+)"[^>]*alt="([^"]*)"[^>]*>/gi;
-      while ((match = altRe.exec(html)) !== null) {
-        const url = match[1];
-        const alt = match[2].replace(/^Sticker\s*\|\s*/i, "").trim();
-        if (url && alt) stickers.push({ iconUrl: url, name: alt });
+      const altMatch = /alt="([^"]*)"/.exec(tag);
+      let name = "";
+      if (altMatch) {
+        name = altMatch[1].replace(/^Sticker\s*\|\s*/i, "").trim();
       }
+
+      if (!name) {
+        const afterTag = html.slice(html.indexOf(tag) + tag.length);
+        const brName = /^\s*(?:<br\s*\/?\s*>)?\s*([^<]+)/i.exec(afterTag);
+        if (brName) name = brName[1].replace(/^Sticker:\s*/i, "").trim();
+      }
+
+      if (url) stickers.push({ iconUrl: url, name: name || "Sticker" });
     }
   }
   return stickers;
@@ -257,6 +261,14 @@ export function normalizeInventory(raw: any): NormalizedItem[] {
       ? inspectRaw.replace("%owner_steamid%", "0").replace("%assetid%", a.assetid ?? a.id)
       : null;
 
+    const stickers = extractStickers(desc.descriptions);
+
+    const hasStickerHtml = desc.descriptions?.some((dd: any) => dd.value?.includes("sticker_info"));
+    if (hasStickerHtml) {
+      const stickerHtml = desc.descriptions.find((dd: any) => dd.value?.includes("sticker_info"))?.value ?? "";
+      console.log(`[sticker-debug] ${desc.name} → found ${stickers.length} stickers, html length=${stickerHtml.length}, first 500 chars: ${stickerHtml.slice(0, 500)}`);
+    }
+
     items.push({
       assetId: a.assetid ?? a.id,
       classId: a.classid,
@@ -270,7 +282,7 @@ export function normalizeInventory(raw: any): NormalizedItem[] {
       wear: wearFromTags(desc.tags),
       floatValue: extractFloat(desc.descriptions),
       phaseLabel: phase,
-      stickers: extractStickers(desc.descriptions),
+      stickers,
       tradeLockUntil,
       inspectLink,
       tradable: desc.tradable === 1 || desc.tradable === true,
