@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -362,6 +362,19 @@ function ItemGrid({
 // Item card
 // ---------------------------------------------------------------------------
 
+function RarityAccentStripe({ color }: { color: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    ref.current?.style.setProperty("--trade-item-rarity", color);
+  }, [color]);
+  return (
+    <div
+      ref={ref}
+      className="trade-item-rarity-accent absolute inset-x-0 top-0 h-0.5"
+    />
+  );
+}
+
 function ItemCard({ item }: { item: InventoryItem }) {
   const isLocked = !!item.tradeLockUntil && new Date(item.tradeLockUntil) > new Date();
   const isUnavailable = item.belowThreshold && item.priceSource !== "manual";
@@ -376,12 +389,7 @@ function ItemCard({ item }: { item: InventoryItem }) {
       }`}
     >
       {/* Rarity accent */}
-      {item.rarityColor && (
-        <div
-          className="absolute inset-x-0 top-0 h-0.5"
-          style={{ backgroundColor: item.rarityColor }}
-        />
-      )}
+      {item.rarityColor && <RarityAccentStripe color={item.rarityColor} />}
 
       {/* Image / blur for unavailable */}
       <div className="relative flex items-center justify-center bg-zinc-800/50 p-3">
