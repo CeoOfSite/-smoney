@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { parseTradeUrl } from "@/lib/steam-inventory";
+import { parseTradeUrl, steamId64FromPartner } from "@/lib/steam-inventory";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +35,17 @@ export async function POST(request: NextRequest) {
         error: "invalid_trade_url",
         message:
           "Формат: https://steamcommunity.com/tradeoffer/new/?partner=…&token=…",
+      },
+      { status: 400 },
+    );
+  }
+
+  const derivedSteamId = steamId64FromPartner(parsed.partner);
+  if (derivedSteamId !== user.steamId) {
+    return NextResponse.json(
+      {
+        error: "not_your_trade_url",
+        message: "Эта trade-ссылка не принадлежит вашему аккаунту Steam. Вставьте свою ссылку.",
       },
       { status: 400 },
     );

@@ -42,6 +42,7 @@ export interface NormalizedItem {
   tradeLockUntil: string | null;
   tradable: boolean;
   marketable: boolean;
+  inspectLink: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,13 +79,23 @@ const PHASE_TAGS: Record<string, string> = {
 
 function detectPhase(
   descriptions: Array<{ value?: string; color?: string }> | undefined,
+  tags: Array<{ category?: string; internal_name?: string; localized_tag_name?: string }> | undefined,
 ): string | null {
-  if (!descriptions) return null;
-  for (const d of descriptions) {
-    const val = d.value?.trim();
-    if (!val) continue;
-    for (const [key, label] of Object.entries(PHASE_TAGS)) {
-      if (val.includes(key)) return label;
+  if (tags) {
+    for (const t of tags) {
+      const name = t.localized_tag_name ?? t.internal_name ?? "";
+      for (const [key, label] of Object.entries(PHASE_TAGS)) {
+        if (name.includes(key)) return label;
+      }
+    }
+  }
+  if (descriptions) {
+    for (const d of descriptions) {
+      const val = d.value?.trim();
+      if (!val) continue;
+      for (const [key, label] of Object.entries(PHASE_TAGS)) {
+        if (val.includes(key)) return label;
+      }
     }
   }
   return null;
@@ -152,6 +163,14 @@ function extractFloat(
   return null;
 }
 
+function extractInspectLink(actions: Array<{ link?: string; name?: string }> | undefined): string | null {
+  if (!actions) return null;
+  for (const a of actions) {
+    if (a.link && a.link.includes("csgo_econ_action_preview")) return a.link;
+  }
+  return null;
+}
+
 function detectTradeLock(
   descriptions: Array<{ value?: string; color?: string }> | undefined,
 ): string | null {
@@ -209,8 +228,13 @@ export function normalizeInventory(raw: any): NormalizedItem[] {
 
     const icon = desc.icon_url ? `${STEAM_CDN}${desc.icon_url}` : "";
     const { rarity, rarityColor } = rarityFromTags(desc.tags);
-    const phase = detectPhase(desc.descriptions);
+    const phase = detectPhase(desc.descriptions, desc.tags);
     const tradeLockUntil = detectTradeLock(desc.descriptions);
+
+    const inspectRaw = extractInspectLink(desc.actions);
+    const inspectLink = inspectRaw
+      ? inspectRaw.replace("%owner_steamid%", "0").replace("%assetid%", a.assetid ?? a.id)
+      : null;
 
     items.push({
       assetId: a.assetid ?? a.id,
@@ -227,6 +251,7 @@ export function normalizeInventory(raw: any): NormalizedItem[] {
       phaseLabel: phase,
       stickers: extractStickers(desc.descriptions),
       tradeLockUntil,
+      inspectLink,
       tradable: desc.tradable === 1 || desc.tradable === true,
       marketable: desc.marketable === 1 || desc.marketable === true,
     });
