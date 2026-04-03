@@ -158,7 +158,7 @@ function extractFloat(
   if (!descriptions) return null;
   for (const d of descriptions) {
     const val = d.value ?? "";
-    const m = /(?:Float|Wear\s*Rating)\s*:\s*([\d.]+)/i.exec(val);
+    const m = /(?:Float|Wear\s*Rating|Степень\s*износа)\s*:?\s*([\d.]+)/i.exec(val);
     if (m) return parseFloat(m[1]);
   }
   return null;

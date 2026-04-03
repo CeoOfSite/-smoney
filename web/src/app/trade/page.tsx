@@ -40,11 +40,21 @@ interface InventoryItem {
 // Constants
 // ---------------------------------------------------------------------------
 
-const ITEM_TYPES = [
-  "All", "Rifle", "Pistol", "SMG", "Shotgun", "Machine Gun",
-  "Knife", "Gloves", "Agent", "Sticker", "Graffiti",
-  "Music Kit", "Patch", "Key", "Container", "Charm",
+const ITEM_CATEGORIES = [
+  { key: "All", label: "Все предметы", icon: "◈" },
+  { key: "Weapon", label: "Скины оружия", icon: "🎯" },
+  { key: "Knife", label: "Ножи", icon: "🔪" },
+  { key: "Gloves", label: "Перчатки", icon: "🧤" },
+  { key: "Sticker", label: "Стикеры", icon: "🏷" },
+  { key: "Graffiti", label: "Граффити", icon: "🎨" },
+  { key: "Agent", label: "Агенты", icon: "🕵" },
+  { key: "Music Kit", label: "Муз. наборы", icon: "🎵" },
+  { key: "Patch", label: "Нашивки", icon: "🛡" },
+  { key: "Charm", label: "Брелоки", icon: "🔑" },
+  { key: "Container", label: "Кейсы", icon: "📦" },
 ] as const;
+
+const WEAPON_TYPES = ["Rifle", "Pistol", "SMG", "Shotgun", "Machine Gun"] as const;
 
 const WEAR_LABELS = [
   "Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle-Scarred",
@@ -95,16 +105,15 @@ export default function TradePage() {
   const [selectedMy, setSelectedMy] = useState<Set<string>>(new Set());
   const [selectedOwner, setSelectedOwner] = useState<Set<string>>(new Set());
 
-  // Per-panel filters
+  // Per-panel search/sort
   const [mySearch, setMySearch] = useState("");
-  const [myType, setMyType] = useState("All");
-  const [myWear, setMyWear] = useState("All");
   const [mySort, setMySort] = useState("price-desc");
-
   const [ownerSearch, setOwnerSearch] = useState("");
-  const [ownerType, setOwnerType] = useState("All");
-  const [ownerWear, setOwnerWear] = useState("All");
   const [ownerSort, setOwnerSort] = useState("price-desc");
+
+  // Center filters (apply to both panels)
+  const [category, setCategory] = useState("All");
+  const [wear, setWear] = useState("All");
 
   // ------ loaders ------
   const loadOwner = useCallback(async () => {
@@ -212,11 +221,15 @@ export default function TradePage() {
   const overpay = ownerTotal > 0 ? ((myTotal - ownerTotal) / ownerTotal) * 100 : 0;
   const canSubmit = selectedMy.size > 0 && selectedOwner.size > 0 && !submitting;
 
-  function filterSort(items: InventoryItem[], q: string, t: string, w: string, s: string) {
+  function filterSort(items: InventoryItem[], q: string, s: string) {
     let r = items;
     if (q.trim()) { const ql = q.toLowerCase(); r = r.filter((i) => i.name.toLowerCase().includes(ql) || i.marketHashName.toLowerCase().includes(ql)); }
-    if (t !== "All") r = r.filter((i) => i.type?.includes(t));
-    if (w !== "All") r = r.filter((i) => i.wear === w);
+    if (category === "Weapon") {
+      r = r.filter((i) => WEAPON_TYPES.some((wt) => i.type?.includes(wt)));
+    } else if (category !== "All") {
+      r = r.filter((i) => i.type?.includes(category));
+    }
+    if (wear !== "All") r = r.filter((i) => i.wear === wear);
     return [...r].sort((a, b) => {
       switch (s) {
         case "price-desc": return b.priceUsd - a.priceUsd;
@@ -304,10 +317,8 @@ export default function TradePage() {
               </div>
             ) : (
               <>
-                <PanelFilters
+                <PanelHeader
                   search={mySearch} onSearch={setMySearch}
-                  type={myType} onType={setMyType}
-                  wear={myWear} onWear={setMyWear}
                   sort={mySort} onSort={setMySort}
                   prefix="my"
                   onRefresh={() => doRefresh("my", setMyRefreshing, setMyCooldown, loadMyInventory)}
@@ -315,67 +326,111 @@ export default function TradePage() {
                   tradeUrlAction={() => setEditingTradeUrl(true)}
                 />
                 <div className="flex-1 overflow-y-auto p-2">
-                  <ItemGrid items={filterSort(myItems, mySearch, myType, myWear, mySort)} side="guest" selected={selectedMy} onToggle={(id) => toggle(setSelectedMy, id)} />
+                  <ItemGrid items={filterSort(myItems, mySearch, mySort)} side="guest" selected={selectedMy} onToggle={(id) => toggle(setSelectedMy, id)} />
                 </div>
               </>
             )}
           </div>
         </div>
 
-        {/* ─── CENTER: Trade Summary ─── */}
-        <div className="flex w-[24%] min-w-[260px] flex-col bg-[#111113]">
-          <div className="flex flex-1 flex-col items-center justify-start gap-5 p-5 pt-8">
+        {/* ─── CENTER: Filters + Trade Summary ─── */}
+        <div className="flex w-[24%] min-w-[260px] flex-col bg-[#111113] overflow-y-auto">
+          <div className="flex flex-col gap-4 p-4">
             {/* Trade analysis */}
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Анализ обмена</h3>
-
-            <div className="grid w-full grid-cols-2 gap-3">
-              <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-4 text-center">
-                <div className="mb-1 flex items-center justify-center gap-1.5 text-[11px] text-zinc-500">
-                  <span className="text-amber-500">↗</span> Вы отдаёте
-                </div>
-                <p className="text-lg font-bold text-zinc-100">{fmtPrice(myTotal)}</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/50 p-3 text-center">
+                <div className="mb-0.5 text-[10px] text-zinc-500">Вы отдаёте</div>
+                <p className="text-sm font-bold text-zinc-100">{fmtPrice(myTotal)}</p>
               </div>
-              <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-4 text-center">
-                <div className="mb-1 flex items-center justify-center gap-1.5 text-[11px] text-zinc-500">
-                  <span className="text-emerald-500">↙</span> Вы получаете
-                </div>
-                <p className="text-lg font-bold text-zinc-100">{fmtPrice(ownerTotal)}</p>
+              <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/50 p-3 text-center">
+                <div className="mb-0.5 text-[10px] text-zinc-500">Вы получаете</div>
+                <p className="text-sm font-bold text-zinc-100">{fmtPrice(ownerTotal)}</p>
               </div>
             </div>
 
-            {/* Overpay */}
-            <div className="w-full rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-500">Переплата</span>
-                <span className={`text-sm font-bold ${overpay > 0 ? "text-red-400" : overpay < 0 ? "text-emerald-400" : "text-zinc-400"}`}>
+            {/* Overpay + Submit row */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-3 py-2">
+                <span className="text-[10px] text-zinc-500">Переплата</span>
+                <span className={`text-xs font-bold ${overpay > 0 ? "text-red-400" : overpay < 0 ? "text-emerald-400" : "text-zinc-400"}`}>
                   {overpay > 0 ? "+" : ""}{overpay.toFixed(1)}%
                 </span>
+              </div>
+              <button
+                onClick={submitTrade}
+                disabled={!canSubmit}
+                className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition-all ${
+                  canSubmit
+                    ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20 hover:bg-amber-500 active:scale-[0.98]"
+                    : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
+                }`}
+              >
+                {submitting ? "Отправка..." : "Отправить обмен"}
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-zinc-800/50" />
+
+            {/* Item Type Categories */}
+            <div>
+              <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-zinc-400">
+                <span className="text-amber-500">◈</span> Тип предмета
+              </h4>
+              <div className="flex flex-col gap-1">
+                {ITEM_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.key}
+                    onClick={() => setCategory(cat.key)}
+                    className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs transition-all ${
+                      category === cat.key
+                        ? "bg-amber-600/20 text-amber-400 font-semibold border border-amber-600/40"
+                        : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200 border border-transparent"
+                    }`}
+                  >
+                    <span className="text-sm">{cat.icon}</span>
+                    {cat.label}
+                    {category === cat.key && <span className="ml-auto h-2 w-2 rounded-full bg-amber-500" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Wear filter */}
+            <div>
+              <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-zinc-400">
+                <span className="text-amber-500">◈</span> Износ
+              </h4>
+              <div className="flex flex-wrap gap-1">
+                <button
+                  onClick={() => setWear("All")}
+                  className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    wear === "All" ? "bg-amber-600/20 text-amber-400 border border-amber-600/40" : "text-zinc-500 hover:text-zinc-300 border border-zinc-800/60"
+                  }`}
+                >
+                  Все
+                </button>
+                {WEAR_LABELS.map((w) => (
+                  <button
+                    key={w}
+                    onClick={() => setWear(w)}
+                    className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      wear === w ? "bg-amber-600/20 text-amber-400 border border-amber-600/40" : "text-zinc-500 hover:text-zinc-300 border border-zinc-800/60"
+                    }`}
+                  >
+                    {WEAR_SHORT[w]}
+                  </button>
+                ))}
               </div>
             </div>
 
             {/* Requirements */}
-            <div className="w-full rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-4">
-              <p className="mb-3 text-xs font-medium text-zinc-400">
-                {canSubmit ? "Готово к обмену" : `Осталось ${2 - (selectedMy.size > 0 ? 1 : 0) - (selectedOwner.size > 0 ? 1 : 0)} требований`}
-              </p>
-              <div className="space-y-2">
-                <ReqLine done={selectedMy.size > 0} text="Добавьте предметы из вашего инвентаря" />
+            <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/50 p-3">
+              <div className="space-y-1.5">
+                <ReqLine done={selectedMy.size > 0} text="Добавьте ваши предметы" />
                 <ReqLine done={selectedOwner.size > 0} text="Выберите предметы магазина" />
               </div>
             </div>
-
-            {/* Submit */}
-            <button
-              onClick={submitTrade}
-              disabled={!canSubmit}
-              className={`w-full rounded-xl py-3.5 text-sm font-bold transition-all ${
-                canSubmit
-                  ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20 hover:bg-amber-500 active:scale-[0.98]"
-                  : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
-              }`}
-            >
-              {submitting ? "Отправка..." : "Отправить обмен"}
-            </button>
           </div>
         </div>
 
@@ -391,10 +446,8 @@ export default function TradePage() {
             isRight
           />
 
-          <PanelFilters
+          <PanelHeader
             search={ownerSearch} onSearch={setOwnerSearch}
-            type={ownerType} onType={setOwnerType}
-            wear={ownerWear} onWear={setOwnerWear}
             sort={ownerSort} onSort={setOwnerSort}
             prefix="owner"
             onRefresh={() => doRefresh("owner", setOwnerRefreshing, setOwnerCooldown, loadOwner)}
@@ -402,7 +455,7 @@ export default function TradePage() {
             totalValue={ownerItems.reduce((s, i) => s + (i.belowThreshold ? 0 : i.priceUsd), 0)}
           />
           <div className="flex-1 overflow-y-auto p-2">
-            <ItemGrid items={filterSort(ownerItems, ownerSearch, ownerType, ownerWear, ownerSort)} side="owner" selected={selectedOwner} onToggle={(id) => toggle(setSelectedOwner, id)} />
+            <ItemGrid items={filterSort(ownerItems, ownerSearch, ownerSort)} side="owner" selected={selectedOwner} onToggle={(id) => toggle(setSelectedOwner, id)} />
           </div>
         </div>
       </div>
@@ -469,16 +522,14 @@ function ReqLine({ done, text }: { done: boolean; text: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Panel Filters
+// Panel Header (search + sort + refresh)
 // ---------------------------------------------------------------------------
 
-function PanelFilters({
-  search, onSearch, type, onType, wear, onWear, sort, onSort, prefix,
+function PanelHeader({
+  search, onSearch, sort, onSort, prefix,
   onRefresh, refreshing, cooldown, tradeUrlAction, totalValue,
 }: {
   search: string; onSearch: (v: string) => void;
-  type: string; onType: (v: string) => void;
-  wear: string; onWear: (v: string) => void;
   sort: string; onSort: (v: string) => void;
   prefix: string;
   onRefresh: () => void; refreshing: boolean; cooldown: number;
@@ -520,25 +571,6 @@ function PanelFilters({
         {tradeUrlAction && (
           <button onClick={tradeUrlAction} className="rounded-lg border border-zinc-800/60 p-1.5 text-[10px] text-zinc-600 hover:text-zinc-400" title="Изменить trade-ссылку">⚙</button>
         )}
-      </div>
-      <div className="mt-2 flex gap-1.5 overflow-x-auto">
-        <select
-          aria-label={`${prefix}-type`}
-          className="rounded-md border border-zinc-800/60 bg-zinc-900/60 px-2 py-1 text-[11px] text-zinc-400 focus:outline-none"
-          value={type}
-          onChange={(e) => onType(e.target.value)}
-        >
-          {ITEM_TYPES.map((t) => <option key={t} value={t}>{t === "All" ? "Все типы" : t}</option>)}
-        </select>
-        <select
-          aria-label={`${prefix}-wear`}
-          className="rounded-md border border-zinc-800/60 bg-zinc-900/60 px-2 py-1 text-[11px] text-zinc-400 focus:outline-none"
-          value={wear}
-          onChange={(e) => onWear(e.target.value)}
-        >
-          <option value="All">Все износы</option>
-          {WEAR_LABELS.map((w) => <option key={w} value={w}>{w}</option>)}
-        </select>
       </div>
     </div>
   );
@@ -632,24 +664,31 @@ function ItemCard({ item, isSelected, onToggle }: { item: InventoryItem; isSelec
 
       {/* Info */}
       <div className="relative flex flex-col gap-0.5 px-2 pb-2 pt-1.5">
+        {/* Phase label (prominent, like sargee) */}
+        {item.phaseLabel && (
+          <span className={`mb-0.5 self-start rounded px-1.5 py-0.5 text-[9px] font-bold ${phaseStyle(item.phaseLabel)}`}>
+            {item.phaseLabel}
+          </span>
+        )}
+
+        {/* Name */}
+        <p className="truncate text-[11px] font-medium leading-tight text-zinc-200" title={item.name}>{item.name}</p>
+
         {/* Wear badge */}
         {wearShort && (
-          <span className="mb-0.5 self-start rounded bg-zinc-800 px-1.5 py-0.5 text-[9px] font-semibold text-zinc-400">
+          <span className="self-start rounded bg-zinc-800 px-1.5 py-0.5 text-[9px] font-semibold text-zinc-400">
             {wearShort}
           </span>
         )}
 
         {/* Float */}
         {item.floatValue != null && (
-          <p className="text-[9px] text-zinc-600">Float: {item.floatValue.toFixed(4)}</p>
-        )}
-
-        {/* Name */}
-        <p className="truncate text-[11px] font-medium leading-tight text-zinc-200" title={item.name}>{item.name}</p>
-
-        {/* Phase */}
-        {item.phaseLabel && (
-          <p className="text-[10px] font-semibold text-cyan-400">{item.phaseLabel}</p>
+          <div className="mt-0.5">
+            <p className="text-[10px] font-medium text-emerald-400">Float: {item.floatValue.toFixed(item.floatValue < 0.01 ? 6 : 4)}</p>
+            <div className="mt-0.5 h-1 w-full rounded-full bg-zinc-800 overflow-hidden">
+              <div className="h-full rounded-full" style={{ width: `${Math.min(item.floatValue * 100, 100)}%`, background: floatBarColor(item.floatValue) }} />
+            </div>
+          </div>
         )}
 
         {/* Price */}
@@ -672,6 +711,28 @@ function ItemCard({ item, isSelected, onToggle }: { item: InventoryItem; isSelec
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function phaseStyle(phase: string): string {
+  switch (phase) {
+    case "Ruby": return "bg-red-900/60 text-red-400";
+    case "Sapphire": return "bg-blue-900/60 text-blue-400";
+    case "Emerald": return "bg-emerald-900/60 text-emerald-400";
+    case "Black Pearl": return "bg-purple-900/60 text-purple-400";
+    case "Phase 1": return "bg-pink-900/40 text-pink-400";
+    case "Phase 2": return "bg-cyan-900/40 text-cyan-400";
+    case "Phase 3": return "bg-green-900/40 text-green-400";
+    case "Phase 4": return "bg-indigo-900/40 text-indigo-400";
+    default: return "bg-zinc-800 text-zinc-300";
+  }
+}
+
+function floatBarColor(f: number): string {
+  if (f < 0.07) return "#22c55e";
+  if (f < 0.15) return "#84cc16";
+  if (f < 0.38) return "#eab308";
+  if (f < 0.45) return "#f97316";
+  return "#ef4444";
+}
 
 function fmtLock(iso: string): string {
   const d = new Date(iso).getTime() - Date.now();
