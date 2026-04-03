@@ -91,27 +91,24 @@ export default function TradePage() {
   const [hasTradeUrl, setHasTradeUrl] = useState(false);
   const [editingTradeUrl, setEditingTradeUrl] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [tradeSuccess, setTradeSuccess] = useState<string | null>(null);
 
-  // Refresh cooldowns (seconds remaining)
+  // Refresh cooldowns
   const [ownerRefreshing, setOwnerRefreshing] = useState(false);
   const [myRefreshing, setMyRefreshing] = useState(false);
   const [ownerCooldown, setOwnerCooldown] = useState(0);
   const [myCooldown, setMyCooldown] = useState(0);
 
-  // Selected items for trade
+  // Selected items
   const [selectedMy, setSelectedMy] = useState<Set<string>>(new Set());
   const [selectedOwner, setSelectedOwner] = useState<Set<string>>(new Set());
 
-  // Independent filters per panel
-  const [mySearch, setMySearch] = useState("");
-  const [myType, setMyType] = useState("All");
-  const [myWear, setMyWear] = useState("All");
-  const [mySort, setMySort] = useState("price-desc");
-
-  const [ownerSearch, setOwnerSearch] = useState("");
-  const [ownerType, setOwnerType] = useState("All");
-  const [ownerWear, setOwnerWear] = useState("All");
-  const [ownerSort, setOwnerSort] = useState("price-desc");
+  // Shared center filters
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("All");
+  const [wearFilter, setWearFilter] = useState("All");
+  const [sort, setSort] = useState("price-desc");
 
   const loadOwner = useCallback(async () => {
     const res = await fetch("/api/inventory/owner");
@@ -255,34 +252,51 @@ export default function TradePage() {
   }, []);
 
   const removeMySelected = useCallback((id: string) => {
-    setSelectedMy((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
+    setSelectedMy((prev) => { const n = new Set(prev); n.delete(id); return n; });
   }, []);
 
   const removeOwnerSelected = useCallback((id: string) => {
-    setSelectedOwner((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
+    setSelectedOwner((prev) => { const n = new Set(prev); n.delete(id); return n; });
   }, []);
 
-  // Helpers
+  // Submit trade
+  const submitTrade = useCallback(async () => {
+    setError(null);
+    setTradeSuccess(null);
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/trades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guestItems: Array.from(selectedMy),
+          ownerItems: Array.from(selectedOwner),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.message ?? data?.error ?? "Ошибка создания обмена");
+        return;
+      }
+      setTradeSuccess(`Заявка #${data.tradeId} создана!`);
+      setSelectedMy(new Set());
+      setSelectedOwner(new Set());
+      if (data.ownerTradeUrl) {
+        window.open(data.ownerTradeUrl, "_blank");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }, [selectedMy, selectedOwner]);
+
+  // Computed
   const selectedMyItems = myItems.filter((i) => selectedMy.has(i.assetId));
   const selectedOwnerItems = ownerItems.filter((i) => selectedOwner.has(i.assetId));
   const myTotal = selectedMyItems.reduce((s, i) => s + (i.belowThreshold ? 0 : i.priceUsd), 0);
   const ownerTotal = selectedOwnerItems.reduce((s, i) => s + (i.belowThreshold ? 0 : i.priceUsd), 0);
+  const canSubmit = selectedMy.size > 0 && selectedOwner.size > 0 && !submitting;
 
-  function filterAndSort(
-    items: InventoryItem[],
-    search: string,
-    typeFilter: string,
-    wearFilter: string,
-    sort: string,
-  ): InventoryItem[] {
+  function filterAndSort(items: InventoryItem[]): InventoryItem[] {
     let result = items;
 
     if (search.trim()) {
@@ -304,20 +318,13 @@ export default function TradePage() {
 
     result = [...result].sort((a, b) => {
       switch (sort) {
-        case "price-desc":
-          return b.priceUsd - a.priceUsd;
-        case "price-asc":
-          return a.priceUsd - b.priceUsd;
-        case "name-asc":
-          return a.name.localeCompare(b.name);
-        case "name-desc":
-          return b.name.localeCompare(a.name);
-        case "float-asc":
-          return (a.floatValue ?? 1) - (b.floatValue ?? 1);
-        case "float-desc":
-          return (b.floatValue ?? 0) - (a.floatValue ?? 0);
-        default:
-          return 0;
+        case "price-desc": return b.priceUsd - a.priceUsd;
+        case "price-asc": return a.priceUsd - b.priceUsd;
+        case "name-asc": return a.name.localeCompare(b.name);
+        case "name-desc": return b.name.localeCompare(a.name);
+        case "float-asc": return (a.floatValue ?? 1) - (b.floatValue ?? 1);
+        case "float-desc": return (b.floatValue ?? 0) - (a.floatValue ?? 0);
+        default: return 0;
       }
     });
 
@@ -351,34 +358,114 @@ export default function TradePage() {
         </div>
       </header>
 
-      {/* Trade Offer Panels */}
+      {/* Trade Offer Panels + Submit */}
       <div className="border-b border-zinc-800 bg-zinc-900/40">
-        <div className="mx-auto grid max-w-[1600px] grid-cols-2 gap-0">
-          {/* Your offer */}
-          <TradeOfferPanel
-            title="Вы отдаёте"
-            items={selectedMyItems}
-            total={myTotal}
-            onRemove={removeMySelected}
-            emptyText={isLoggedIn ? "Выберите предметы из вашего инвентаря" : "Войдите через Steam"}
-          />
-          {/* You receive */}
-          <TradeOfferPanel
-            title="Вы получаете"
-            items={selectedOwnerItems}
-            total={ownerTotal}
-            onRemove={removeOwnerSelected}
-            emptyText="Выберите предметы из инвентаря магазина"
-            isRight
-          />
+        <div className="mx-auto max-w-[1600px]">
+          <div className="grid grid-cols-2 gap-0">
+            <TradeOfferPanel
+              title="Вы отдаёте"
+              items={selectedMyItems}
+              total={myTotal}
+              onRemove={removeMySelected}
+              emptyText={isLoggedIn ? "Выберите предметы из вашего инвентаря" : "Войдите через Steam"}
+            />
+            <TradeOfferPanel
+              title="Вы получаете"
+              items={selectedOwnerItems}
+              total={ownerTotal}
+              onRemove={removeOwnerSelected}
+              emptyText="Выберите предметы из инвентаря магазина"
+              isRight
+            />
+          </div>
+
+          {/* Submit button */}
+          {isLoggedIn && (selectedMy.size > 0 || selectedOwner.size > 0) && (
+            <div className="border-t border-zinc-800 px-4 py-3">
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-zinc-500">
+                  Вы отдаёте: <span className="text-zinc-300">{formatPrice(myTotal)}</span>
+                  {" · "}
+                  Вы получаете: <span className="text-zinc-300">{formatPrice(ownerTotal)}</span>
+                </div>
+                <button
+                  onClick={submitTrade}
+                  disabled={!canSubmit}
+                  className={`rounded-lg px-6 py-2.5 text-sm font-semibold transition-colors ${
+                    canSubmit
+                      ? "bg-emerald-600 text-white hover:bg-emerald-500"
+                      : "bg-zinc-700 text-zinc-500 cursor-not-allowed"
+                  }`}
+                >
+                  {submitting ? "Отправка..." : "Отправить обмен"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Messages */}
       {error && (
         <div className="mx-auto max-w-[1600px] px-4 pt-3">
           <p className="text-sm text-red-400">{error}</p>
         </div>
       )}
+      {tradeSuccess && (
+        <div className="mx-auto max-w-[1600px] px-4 pt-3">
+          <p className="text-sm text-emerald-400">{tradeSuccess}</p>
+        </div>
+      )}
+
+      {/* Central Filters */}
+      <div className="border-b border-zinc-800 bg-zinc-900/30 px-4 py-3">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-center gap-3">
+          <input
+            type="text"
+            placeholder="Поиск..."
+            className="w-48 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-500"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select
+            aria-label="Тип предмета"
+            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100"
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+          >
+            {ITEM_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t === "All" ? "Все типы" : t}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Износ"
+            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100"
+            value={wearFilter}
+            onChange={(e) => setWearFilter(e.target.value)}
+          >
+            <option value="All">Все износы</option>
+            {WEAR_LABELS.map((w) => (
+              <option key={w} value={w}>
+                {w}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Сортировка"
+            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100"
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+          >
+            {SORT_OPTIONS.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       {/* Two-panel inventory layout */}
       <div className="mx-auto max-w-[1600px] px-4 py-4">
@@ -458,25 +545,12 @@ export default function TradePage() {
                 </div>
               </div>
             ) : (
-              <>
-                <FilterBar
-                  search={mySearch}
-                  onSearch={setMySearch}
-                  type={myType}
-                  onType={setMyType}
-                  wear={myWear}
-                  onWear={setMyWear}
-                  sort={mySort}
-                  onSort={setMySort}
-                  prefix="my"
-                />
-                <ItemGrid
-                  items={filterAndSort(myItems, mySearch, myType, myWear, mySort)}
-                  side="guest"
-                  selected={selectedMy}
-                  onToggle={toggleMy}
-                />
-              </>
+              <ItemGrid
+                items={filterAndSort(myItems)}
+                side="guest"
+                selected={selectedMy}
+                onToggle={toggleMy}
+              />
             )}
           </div>
 
@@ -492,19 +566,8 @@ export default function TradePage() {
                 cooldown={ownerCooldown}
               />
             </div>
-            <FilterBar
-              search={ownerSearch}
-              onSearch={setOwnerSearch}
-              type={ownerType}
-              onType={setOwnerType}
-              wear={ownerWear}
-              onWear={setOwnerWear}
-              sort={ownerSort}
-              onSort={setOwnerSort}
-              prefix="owner"
-            />
             <ItemGrid
-              items={filterAndSort(ownerItems, ownerSearch, ownerType, ownerWear, ownerSort)}
+              items={filterAndSort(ownerItems)}
               side="owner"
               selected={selectedOwner}
               onToggle={toggleOwner}
@@ -580,81 +643,6 @@ function TradeOfferPanel({
           ))
         )}
       </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Filter bar (per-panel)
-// ---------------------------------------------------------------------------
-
-function FilterBar({
-  search,
-  onSearch,
-  type,
-  onType,
-  wear,
-  onWear,
-  sort,
-  onSort,
-  prefix,
-}: {
-  search: string;
-  onSearch: (v: string) => void;
-  type: string;
-  onType: (v: string) => void;
-  wear: string;
-  onWear: (v: string) => void;
-  sort: string;
-  onSort: (v: string) => void;
-  prefix: string;
-}) {
-  return (
-    <div className="mb-3 flex flex-wrap items-center gap-2">
-      <input
-        type="text"
-        placeholder="Поиск..."
-        className="w-36 rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-500"
-        value={search}
-        onChange={(e) => onSearch(e.target.value)}
-      />
-      <select
-        aria-label={`${prefix}-type`}
-        className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-100"
-        value={type}
-        onChange={(e) => onType(e.target.value)}
-      >
-        {ITEM_TYPES.map((t) => (
-          <option key={t} value={t}>
-            {t === "All" ? "Все типы" : t}
-          </option>
-        ))}
-      </select>
-      <select
-        aria-label={`${prefix}-wear`}
-        className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-100"
-        value={wear}
-        onChange={(e) => onWear(e.target.value)}
-      >
-        <option value="All">Все износы</option>
-        {WEAR_LABELS.map((w) => (
-          <option key={w} value={w}>
-            {w}
-          </option>
-        ))}
-      </select>
-      <select
-        aria-label={`${prefix}-sort`}
-        className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-100"
-        value={sort}
-        onChange={(e) => onSort(e.target.value)}
-      >
-        {SORT_OPTIONS.map((s) => (
-          <option key={s.key} value={s.key}>
-            {s.label}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }
@@ -770,14 +758,12 @@ function ItemCard({
     >
       {item.rarityColor && <RarityAccentStripe color={item.rarityColor} />}
 
-      {/* Selection indicator */}
       {isSelected && (
         <div className="absolute left-1.5 top-1.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-bold text-white">
           ✓
         </div>
       )}
 
-      {/* Image */}
       <div className="relative flex items-center justify-center bg-zinc-800/50 p-3">
         {isUnavailable ? (
           <>
@@ -806,14 +792,12 @@ function ItemCard({
           />
         )}
 
-        {/* Trade lock badge */}
         {isLocked && (
           <div className="absolute right-1 top-1 rounded bg-orange-600/80 px-1.5 py-0.5 text-[9px] font-medium text-white">
             {formatTradeLock(item.tradeLockUntil!)}
           </div>
         )}
 
-        {/* Stickers */}
         {item.stickers.length > 0 && (
           <div className="absolute bottom-1 left-1 flex gap-0.5">
             {item.stickers.map((s, i) => (
@@ -831,7 +815,6 @@ function ItemCard({
         )}
       </div>
 
-      {/* Info */}
       <div className="space-y-0.5 px-2 pb-2 pt-1.5">
         <p className="truncate text-xs font-medium text-zinc-100" title={item.name}>
           {item.name}
