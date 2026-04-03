@@ -221,16 +221,8 @@ export default function TradePage() {
   const overpay = ownerTotal > 0 ? ((myTotal - ownerTotal) / ownerTotal) * 100 : 0;
   const canSubmit = selectedMy.size > 0 && selectedOwner.size > 0 && !submitting;
 
-  function filterSort(items: InventoryItem[], q: string, s: string) {
-    let r = items;
-    if (q.trim()) { const ql = q.toLowerCase(); r = r.filter((i) => i.name.toLowerCase().includes(ql) || i.marketHashName.toLowerCase().includes(ql)); }
-    if (category === "Weapon") {
-      r = r.filter((i) => WEAPON_TYPES.some((wt) => i.type?.includes(wt)));
-    } else if (category !== "All") {
-      r = r.filter((i) => i.type?.includes(category));
-    }
-    if (wear !== "All") r = r.filter((i) => i.wear === wear);
-    return [...r].sort((a, b) => {
+  function sortItems(items: InventoryItem[], s: string) {
+    return [...items].sort((a, b) => {
       switch (s) {
         case "price-desc": return b.priceUsd - a.priceUsd;
         case "price-asc": return a.priceUsd - b.priceUsd;
@@ -241,6 +233,24 @@ export default function TradePage() {
         default: return 0;
       }
     });
+  }
+
+  function filterMy(items: InventoryItem[], q: string, s: string) {
+    let r = items;
+    if (q.trim()) { const ql = q.toLowerCase(); r = r.filter((i) => i.name.toLowerCase().includes(ql) || i.marketHashName.toLowerCase().includes(ql)); }
+    return sortItems(r, s);
+  }
+
+  function filterOwner(items: InventoryItem[], q: string, s: string) {
+    let r = items;
+    if (q.trim()) { const ql = q.toLowerCase(); r = r.filter((i) => i.name.toLowerCase().includes(ql) || i.marketHashName.toLowerCase().includes(ql)); }
+    if (category === "Weapon") {
+      r = r.filter((i) => WEAPON_TYPES.some((wt) => i.type?.includes(wt)));
+    } else if (category !== "All") {
+      r = r.filter((i) => i.type?.includes(category));
+    }
+    if (wear !== "All") r = r.filter((i) => i.wear === wear);
+    return sortItems(r, s);
   }
 
   if (loading) {
@@ -341,7 +351,7 @@ export default function TradePage() {
                   tradeUrlAction={() => setEditingTradeUrl(true)}
                 />
                 <div className="flex-1 overflow-y-auto p-2">
-                  <ItemGrid items={filterSort(myItems, mySearch, mySort)} side="guest" selected={selectedMy} onToggle={(id) => toggle(setSelectedMy, id)} />
+                  <ItemGrid items={filterMy(myItems, mySearch, mySort)} side="guest" selected={selectedMy} onToggle={(id) => toggle(setSelectedMy, id)} />
                 </div>
               </>
             )}
@@ -470,7 +480,7 @@ export default function TradePage() {
             totalValue={ownerItems.reduce((s, i) => s + (i.belowThreshold ? 0 : i.priceUsd), 0)}
           />
           <div className="flex-1 overflow-y-auto p-2">
-            <ItemGrid items={filterSort(ownerItems, ownerSearch, ownerSort)} side="owner" selected={selectedOwner} onToggle={(id) => toggle(setSelectedOwner, id)} />
+            <ItemGrid items={filterOwner(ownerItems, ownerSearch, ownerSort)} side="owner" selected={selectedOwner} onToggle={(id) => toggle(setSelectedOwner, id)} />
           </div>
         </div>
       </div>
