@@ -82,7 +82,7 @@ const PAINT_INDEX_PHASE: Record<number, string> = {
 };
 
 function extractFromAssetProperties(
-  assetProperties: Array<{ propertyid?: number; float_value?: string; int_value?: string; name?: string }> | undefined,
+  assetProperties: Array<Record<string, unknown>> | undefined,
 ): { floatValue: number | null; paintIndex: number | null } {
   if (!assetProperties || !Array.isArray(assetProperties)) {
     return { floatValue: null, paintIndex: null };
@@ -92,11 +92,12 @@ function extractFromAssetProperties(
   let paintIndex: number | null = null;
 
   for (const prop of assetProperties) {
-    if (prop.propertyid === 2 && prop.float_value != null) {
+    const pid = Number(prop.propertyid);
+    if (pid === 2 && prop.float_value != null) {
       const parsed = parseFloat(String(prop.float_value));
       if (!isNaN(parsed) && parsed > 0) floatValue = parsed;
     }
-    if (prop.propertyid === 7 && prop.int_value != null) {
+    if (pid === 7 && prop.int_value != null) {
       const parsed = parseInt(String(prop.int_value), 10);
       if (!isNaN(parsed)) paintIndex = parsed;
     }
@@ -291,7 +292,18 @@ export function normalizeInventory(raw: any): NormalizedItem[] {
     descMap.set(`${d.classid}_${d.instanceid}`, d);
   }
 
+  if (descriptions.length > 0) {
+    const sample = descriptions[0];
+    const keys = Object.keys(sample);
+    const hasAP = "asset_properties" in sample;
+    console.log(`[steam-inv] desc sample keys: [${keys.join(",")}] has_asset_properties=${hasAP}`);
+    if (hasAP && Array.isArray(sample.asset_properties)) {
+      console.log(`[steam-inv] asset_properties sample:`, JSON.stringify(sample.asset_properties.slice(0, 3)));
+    }
+  }
+
   const items: NormalizedItem[] = [];
+  let apFoundCount = 0;
   for (const a of assets) {
     const desc = descMap.get(`${a.classid}_${a.instanceid}`);
     if (!desc) continue;
@@ -303,6 +315,7 @@ export function normalizeInventory(raw: any): NormalizedItem[] {
     const itemName: string = desc.market_hash_name ?? desc.name ?? "";
 
     const { floatValue: apFloat, paintIndex } = extractFromAssetProperties(desc.asset_properties);
+    if (apFloat != null || paintIndex != null) apFoundCount++;
     const apPhase = phaseFromPaintIndex(paintIndex, itemName);
     const phase = apPhase ?? detectPhaseFromTagsDescs(desc.descriptions, desc.tags);
     const floatVal = apFloat ?? extractFloat(desc.descriptions);
@@ -334,6 +347,9 @@ export function normalizeInventory(raw: any): NormalizedItem[] {
       marketable: desc.marketable === 1 || desc.marketable === true,
     });
   }
+  const withFloat = items.filter(i => i.floatValue != null).length;
+  const withPhase = items.filter(i => i.phaseLabel != null).length;
+  console.log(`[steam-inv] normalized ${items.length} items: asset_props_hit=${apFoundCount}, with_float=${withFloat}, with_phase=${withPhase}`);
   return items;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
