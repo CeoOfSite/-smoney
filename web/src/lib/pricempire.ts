@@ -69,19 +69,19 @@ export async function syncPrices(): Promise<{
     for (const p of item.prices) {
       if (p.price <= 0) continue;
 
-      const phaseKey = detectPhaseFromName(item.market_hash_name);
+      const { baseName, phaseKey } = extractPhaseFromName(item.market_hash_name);
 
       try {
         await prisma.priceCatalogItem.upsert({
           where: {
             marketHashName_phaseKey_providerKey: {
-              marketHashName: item.market_hash_name,
+              marketHashName: baseName,
               phaseKey,
               providerKey: p.provider_key,
             },
           },
           create: {
-            marketHashName: item.market_hash_name,
+            marketHashName: baseName,
             phaseKey,
             providerKey: p.provider_key,
             priceUsd: p.price,
@@ -102,26 +102,29 @@ export async function syncPrices(): Promise<{
   return { upserted, errors: errors.slice(0, 20) };
 }
 
+const PHASE_NAMES = [
+  "Phase 1",
+  "Phase 2",
+  "Phase 3",
+  "Phase 4",
+  "Emerald",
+  "Sapphire",
+  "Ruby",
+  "Black Pearl",
+];
+
 /**
- * Some PriceEmpire entries may already include phase in the name
- * (e.g. "★ Karambit | Doppler (Factory New) - Phase 2").
- * Detect and return the phaseKey.
+ * PriceEmpire appends phase as a suffix: "... - Phase 2", "... - Ruby".
+ * Returns { baseName: name without suffix, phaseKey }.
  */
-function detectPhaseFromName(name: string): string {
-  const phases = [
-    "Phase 1",
-    "Phase 2",
-    "Phase 3",
-    "Phase 4",
-    "Emerald",
-    "Sapphire",
-    "Ruby",
-    "Black Pearl",
-  ];
-  for (const p of phases) {
-    if (name.includes(p)) return p;
+function extractPhaseFromName(name: string): { baseName: string; phaseKey: string } {
+  for (const p of PHASE_NAMES) {
+    const suffix = ` - ${p}`;
+    if (name.endsWith(suffix)) {
+      return { baseName: name.slice(0, -suffix.length), phaseKey: p };
+    }
   }
-  return "default";
+  return { baseName: name, phaseKey: "default" };
 }
 
 // ---------------------------------------------------------------------------
