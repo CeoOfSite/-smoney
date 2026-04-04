@@ -67,6 +67,7 @@ export function steamId64FromPartner(partner: string): string {
 // ---------------------------------------------------------------------------
 
 const PAINT_INDEX_PHASE: Record<number, string> = {
+  // Doppler
   415: "Ruby",
   416: "Sapphire",
   417: "Black Pearl",
@@ -74,11 +75,28 @@ const PAINT_INDEX_PHASE: Record<number, string> = {
   419: "Phase 2",
   420: "Phase 3",
   421: "Phase 4",
+  // Gamma Doppler
   568: "Emerald",
   569: "Phase 1",
   570: "Phase 2",
   571: "Phase 3",
   572: "Phase 4",
+  // Doppler (gen 2 — newer weapons)
+  617: "Ruby",
+  618: "Sapphire",
+  619: "Black Pearl",
+  620: "Phase 1",
+  621: "Phase 2",
+  622: "Phase 3",
+  623: "Phase 4",
+  // Doppler (gen 3 — newest weapons)
+  853: "Ruby",
+  854: "Sapphire",
+  855: "Black Pearl",
+  856: "Phase 1",
+  857: "Phase 2",
+  858: "Phase 3",
+  859: "Phase 4",
 };
 
 function extractFromAssetProperties(
@@ -292,6 +310,16 @@ export function normalizeInventory(raw: any, ownerSteamId?: string): NormalizedI
     descMap.set(`${d.classid}_${d.instanceid}`, d);
   }
 
+  // asset_properties is a SEPARATE top-level array in Steam's response
+  const assetPropsMap = new Map<string, any[]>();
+  if (Array.isArray(raw?.asset_properties)) {
+    for (const ap of raw.asset_properties) {
+      if (ap.assetid && Array.isArray(ap.asset_properties)) {
+        assetPropsMap.set(String(ap.assetid), ap.asset_properties);
+      }
+    }
+  }
+
   const items: NormalizedItem[] = [];
   for (const a of assets) {
     const desc = descMap.get(`${a.classid}_${a.instanceid}`);
@@ -303,20 +331,22 @@ export function normalizeInventory(raw: any, ownerSteamId?: string): NormalizedI
 
     const itemName: string = desc.market_hash_name ?? desc.name ?? "";
 
-    const { floatValue: apFloat, paintIndex } = extractFromAssetProperties(a.asset_properties);
+    const assetId = a.assetid ?? a.id;
+    const propsForAsset = assetPropsMap.get(String(assetId));
+    const { floatValue: apFloat, paintIndex } = extractFromAssetProperties(propsForAsset);
     const apPhase = phaseFromPaintIndex(paintIndex, itemName);
     const phase = apPhase ?? detectPhaseFromTagsDescs(desc.descriptions, desc.tags);
     const floatVal = apFloat ?? extractFloat(desc.descriptions);
 
     const inspectRaw = extractInspectLink(desc.actions);
     const inspectLink = inspectRaw
-      ? inspectRaw.replace("%owner_steamid%", ownerSteamId ?? "0").replace("%assetid%", a.assetid ?? a.id)
+      ? inspectRaw.replace("%owner_steamid%", ownerSteamId ?? "0").replace("%assetid%", assetId)
       : null;
 
     const stickers = extractStickers(desc.descriptions);
 
     items.push({
-      assetId: a.assetid ?? a.id,
+      assetId,
       classId: a.classid,
       instanceId: a.instanceid,
       marketHashName: desc.market_hash_name ?? desc.name ?? "",
@@ -418,6 +448,7 @@ async function fetchViaCommunityNew(
   console.log(`[steam-inv] strategy=community-new (paginated)`);
 
   const allAssets: unknown[] = [];
+  const allAssetProps: unknown[] = [];
   const descMap = new Map<string, unknown>();
   let startAssetId: string | undefined;
   const MAX_PAGES = 10;
@@ -442,6 +473,9 @@ async function fetchViaCommunityNew(
 
       if (Array.isArray(json.assets)) {
         allAssets.push(...json.assets);
+      }
+      if (Array.isArray(json.asset_properties)) {
+        allAssetProps.push(...json.asset_properties);
       }
       if (Array.isArray(json.descriptions)) {
         for (const d of json.descriptions) {
@@ -475,7 +509,7 @@ async function fetchViaCommunityNew(
   console.log(`[steam-inv] community-new TOTAL: ${allAssets.length} assets, ${descMap.size} descriptions`);
   return {
     ok: true,
-    data: { assets: allAssets, descriptions: Array.from(descMap.values()) },
+    data: { assets: allAssets, descriptions: Array.from(descMap.values()), asset_properties: allAssetProps },
   };
 }
 

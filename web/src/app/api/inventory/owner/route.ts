@@ -8,7 +8,6 @@ import { getCached, setCache } from "@/lib/inventory-cache";
 import { fetchOwnerInventory } from "@/lib/steam-inventory";
 import type { NormalizedItem } from "@/lib/steam-inventory";
 import { resolvePrice } from "@/lib/pricempire";
-import { enrichFromInspectLinks } from "@/lib/csfloat";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +45,6 @@ export async function GET() {
     const locked = items.filter((i) => !i.tradable).length;
     console.log(`[/api/inventory/owner] loaded ${raw.length} items → shown ${items.length} (hidden_junk=${raw.length - items.length}, tradable=false: ${locked})`);
 
-    enrichFromInspectLinks(items);
     setCache(ownerSteamId, items);
   }
 

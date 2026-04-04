@@ -69,7 +69,12 @@ function sleep(ms: number): Promise<void> {
 }
 
 function parseInspectParams(link: string): { s: string; a: string; d: string } | null {
-  const decoded = decodeURIComponent(link);
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(link);
+  } catch {
+    decoded = link;
+  }
   const m = /S(\d+)A(\d+)D(\d+)/.exec(decoded);
   if (!m) return null;
   return { s: m[1], a: m[2], d: m[3] };
@@ -163,6 +168,7 @@ export function startBackgroundEnrichment(items: EnrichableItem[]): void {
   lastEnrichmentStart = Date.now();
 
   (async () => {
+    try {
     let success = 0;
     let fail = 0;
     let rateLimitStreak = 0;
@@ -207,7 +213,11 @@ export function startBackgroundEnrichment(items: EnrichableItem[]): void {
     console.log(
       `[csfloat] enrichment done: success=${success}, fail=${fail}, cached=${cache.size}, with_float=${withFloat}, with_phase=${withPhase}`,
     );
-    enrichmentRunning = false;
+    } catch (err) {
+      console.error("[csfloat] enrichment crashed:", err);
+    } finally {
+      enrichmentRunning = false;
+    }
   })();
 }
 
