@@ -256,6 +256,13 @@ export function normalizeInventory(raw: any): NormalizedItem[] {
     const phase = detectPhase(desc.descriptions, desc.tags);
     const tradeLockUntil = detectTradeLock(desc.descriptions);
 
+    const itemName: string = desc.market_hash_name ?? desc.name ?? "";
+    if (itemName.includes("Doppler") && !phase) {
+      const tagDump = (desc.tags ?? []).map((t: any) => `${t.category}:${t.internal_name}:${t.localized_tag_name}`).join(" | ");
+      const descDump = (desc.descriptions ?? []).map((d: any) => (d.value ?? "").slice(0, 80)).filter(Boolean).join(" | ");
+      console.log(`[phase-debug] NO PHASE for "${itemName}" asset=${a.assetid ?? a.id} tags=[${tagDump}] descs=[${descDump}] icon_url_tail=${(desc.icon_url ?? "").slice(-60)}`);
+    }
+
     const inspectRaw = extractInspectLink(desc.actions);
     const inspectLink = inspectRaw
       ? inspectRaw.replace("%owner_steamid%", "0").replace("%assetid%", a.assetid ?? a.id)
