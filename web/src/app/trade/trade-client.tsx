@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { formatRefreshCooldownRu, OWNER_REFRESH_COOLDOWN_MS, USER_REFRESH_COOLDOWN_MS } from "@/lib/inventory-refresh-limits";
+
 import styles from "./page.module.css";
 
 // ---------------------------------------------------------------------------
@@ -125,15 +127,23 @@ export default function TradePageClient({
   const loadOwner = useCallback(async () => {
     const res = await fetch("/api/inventory/owner");
     const data = await res.json().catch(() => null);
-    if (res.ok && data?.items) setOwnerItems(data.items);
-    else setError(data?.message ?? `Магазин: ${data?.error ?? "ошибка"}`);
+    if (res.ok && data?.items) {
+      setOwnerItems(data.items);
+      if (typeof data.refreshCooldownRemainingMs === "number" && data.refreshCooldownRemainingMs > 0) {
+        setOwnerCooldown(Math.ceil(data.refreshCooldownRemainingMs / 1000));
+      }
+    } else setError(data?.message ?? `Магазин: ${data?.error ?? "ошибка"}`);
   }, []);
 
   const loadMyInventory = useCallback(async () => {
     const res = await fetch("/api/inventory/me");
     const data = await res.json().catch(() => null);
-    if (res.ok && data?.items) setMyItems(data.items);
-    else if (data?.error !== "trade_url_required" && data?.error !== "unauthorized")
+    if (res.ok && data?.items) {
+      setMyItems(data.items);
+      if (typeof data.refreshCooldownRemainingMs === "number" && data.refreshCooldownRemainingMs > 0) {
+        setMyCooldown(Math.ceil(data.refreshCooldownRemainingMs / 1000));
+      }
+    } else if (data?.error !== "trade_url_required" && data?.error !== "unauthorized")
       setError(`Инвентарь: ${data?.error ?? "ошибка"}`);
   }, []);
 
@@ -169,7 +179,13 @@ export default function TradePageClient({
       setHasTradeUrl(true);
       setEditingTradeUrl(false);
       const myRes = await fetch("/api/inventory/me");
-      if (myRes.ok) { const d = await myRes.json(); setMyItems(d.items ?? []); }
+      if (myRes.ok) {
+        const d = await myRes.json();
+        setMyItems(d.items ?? []);
+        if (typeof d.refreshCooldownRemainingMs === "number" && d.refreshCooldownRemainingMs > 0) {
+          setMyCooldown(Math.ceil(d.refreshCooldownRemainingMs / 1000));
+        }
+      }
     } else {
       const err = await res.json().catch(() => null);
       setError(err?.message ?? "Ошибка сохранения trade-ссылки");
@@ -191,9 +207,13 @@ export default function TradePageClient({
     try {
       const res = await fetch("/api/inventory/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ side }) });
       const data = await res.json().catch(() => null);
-      if (res.status === 429) setC(Math.ceil((data?.retryAfterMs ?? 120000) / 1000));
-      else if (res.ok) { setC(120); await reload(); }
-      else setError(data?.message ?? "Ошибка обновления");
+      if (res.status === 429) setC(Math.ceil((data?.retryAfterMs ?? 0) / 1000));
+      else if (res.ok) {
+        const fallback = side === "my" ? USER_REFRESH_COOLDOWN_MS : OWNER_REFRESH_COOLDOWN_MS;
+        const ms = typeof data?.refreshCooldownRemainingMs === "number" ? data.refreshCooldownRemainingMs : fallback;
+        setC(Math.ceil(ms / 1000));
+        await reload();
+      } else setError(data?.message ?? "Ошибка обновления");
     } finally { setR(false); }
   }, []);
 
@@ -604,14 +624,30 @@ function PanelHeader({
         >
           {SORT_OPTIONS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
-        <button
-          onClick={onRefresh}
-          disabled={refreshing || cooldown > 0}
-          className={`rounded-lg border p-1.5 text-xs transition-colors ${cooldown > 0 || refreshing ? "border-zinc-800 text-zinc-700 cursor-not-allowed" : "border-zinc-800/60 text-zinc-500 hover:text-zinc-300"}`}
-          title={cooldown > 0 ? `${cooldown}с` : "Обновить"}
+        <div
+          className={`relative inline-flex rounded-lg ${cooldown > 0 && !refreshing ? "group/refcd cursor-not-allowed" : ""}`}
+          title={cooldown > 0 && !refreshing ? `Следующее обновление через ${formatRefreshCooldownRu(cooldown)}` : undefined}
         >
-          <span className={refreshing ? "animate-spin inline-block" : ""}>↻</span>
-        </button>
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing || cooldown > 0}
+            className={`rounded-lg border p-1.5 text-xs transition-colors ${cooldown > 0 || refreshing ? "border-zinc-800 text-zinc-700 cursor-not-allowed" : "border-zinc-800/60 text-zinc-500 hover:text-zinc-300"}`}
+            aria-label={cooldown > 0 ? `Следующее обновление через ${formatRefreshCooldownRu(cooldown)}` : "Обновить инвентарь"}
+          >
+            <span className={refreshing ? "inline-block animate-spin" : ""}>↻</span>
+          </button>
+          {cooldown > 0 && !refreshing && (
+            <span
+              role="tooltip"
+              className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 w-max max-w-[min(240px,calc(100vw-24px))] -translate-x-1/2 rounded-md border border-zinc-600/90 bg-zinc-950 px-2 py-1.5 text-center text-[10px] leading-snug text-zinc-100 opacity-0 shadow-xl transition-opacity duration-150 group-hover/refcd:opacity-100"
+            >
+              Следующее обновление через
+              <br />
+              <span className="font-semibold text-amber-400/90">{formatRefreshCooldownRu(cooldown)}</span>
+            </span>
+          )}
+        </div>
         {tradeUrlAction && (
           <button onClick={tradeUrlAction} className="rounded-lg border border-zinc-800/60 p-1.5 text-[10px] text-zinc-600 hover:text-zinc-400" title="Изменить trade-ссылку">⚙</button>
         )}
@@ -643,6 +679,12 @@ function ItemGrid({ items, side, selected, onToggle }: {
 // Item Card
 // ---------------------------------------------------------------------------
 
+function stickerLabel(s: { name: string }, i: number): string {
+  const t = s.name?.trim();
+  if (t) return t;
+  return `Наклейка ${i + 1}`;
+}
+
 function RarityBar({ color }: { color: string }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => { ref.current?.style.setProperty("--rc", color); }, [color]);
@@ -660,7 +702,7 @@ function ItemCard({ item, isSelected, onToggle }: { item: InventoryItem; isSelec
   return (
     <div
       onClick={disabled ? undefined : onToggle}
-      className={`group relative flex h-full min-h-[248px] flex-col overflow-hidden rounded-xl border transition-all ${
+      className={`group relative flex h-full min-h-[248px] flex-col overflow-visible rounded-xl border transition-all ${
         disabled
           ? "border-zinc-800/40 bg-zinc-900/40 opacity-50"
           : isSelected
@@ -708,12 +750,35 @@ function ItemCard({ item, isSelected, onToggle }: { item: InventoryItem; isSelec
         )}
 
         {item.stickers.length > 0 && (
-          <div className="absolute bottom-1 left-1 flex gap-0.5" title={item.stickers.map((s) => s.name).join(", ")}>
-            {item.stickers.slice(0, 5).map((s, i) => (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img key={i} src={s.iconUrl} alt={s.name} className="h-[18px] w-[18px] rounded-sm drop-shadow" loading="lazy" />
-            ))}
-            {item.stickers.length > 5 && <span className="text-[8px] text-zinc-500">+{item.stickers.length - 5}</span>}
+          <div className="group/stickers absolute bottom-1 left-1 z-20 max-w-[calc(100%-4px)]">
+            <div
+              className="flex flex-wrap gap-0.5"
+              aria-label={item.stickers.map((s, i) => stickerLabel(s, i)).join(", ")}
+            >
+              {item.stickers.slice(0, 5).map((s, i) => (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  key={i}
+                  src={s.iconUrl}
+                  alt=""
+                  className="h-[18px] w-[18px] rounded-sm border border-zinc-700/40 bg-zinc-900/80 object-contain drop-shadow"
+                  loading="lazy"
+                />
+              ))}
+              {item.stickers.length > 5 && (
+                <span className="self-center text-[8px] text-zinc-500">+{item.stickers.length - 5}</span>
+              )}
+            </div>
+            <div className="pointer-events-none invisible absolute bottom-full left-0 z-30 mb-1 w-max max-w-[min(240px,calc(100vw-32px))] rounded-md border border-zinc-600/90 bg-zinc-950 px-2 py-1.5 text-left text-[9px] leading-snug text-zinc-100 shadow-xl opacity-0 transition-opacity duration-150 group-hover/stickers:visible group-hover/stickers:opacity-100">
+              <p className="mb-1 text-[8px] font-semibold uppercase tracking-wide text-zinc-500">Наклейки</p>
+              <ul className="list-none space-y-1">
+                {item.stickers.map((s, i) => (
+                  <li key={`${item.assetId}-st-${i}`} className="break-words border-b border-zinc-800/80 pb-1 last:border-0 last:pb-0">
+                    {stickerLabel(s, i)}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         )}
       </div>

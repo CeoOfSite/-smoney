@@ -161,6 +161,44 @@ function detectPhaseFromTagsDescs(
 // Sticker extraction
 // ---------------------------------------------------------------------------
 
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number.parseInt(n, 10)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(Number.parseInt(h, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function extractHtmlAttr(tag: string, attr: string): string | null {
+  const dq = new RegExp(`${attr}\\s*=\\s*"([^"]*)"`, "i").exec(tag);
+  if (dq) return dq[1];
+  const sq = new RegExp(`${attr}\\s*=\\s*'([^']*)'`, "i").exec(tag);
+  if (sq) return sq[1];
+  return null;
+}
+
+/** Strip Steam prefixes; empty if alt/title is only the word "Sticker". */
+function normalizeStickerLabel(raw: string): string {
+  let s = decodeHtmlEntities(raw).replace(/\s+/g, " ").trim();
+  s = s.replace(/^Sticker:?\s*/i, "").replace(/^Sticker\s*\|\s*/i, "").trim();
+  if (!s || /^sticker$/i.test(s)) return "";
+  return s;
+}
+
+function parseStickerNameFromImgTag(tag: string): string {
+  for (const attr of ["title", "alt"] as const) {
+    const v = extractHtmlAttr(tag, attr);
+    if (v) {
+      const n = normalizeStickerLabel(v);
+      if (n) return n;
+    }
+  }
+  return "";
+}
+
 function extractStickers(
   descriptions: Array<{ value?: string }> | undefined,
 ): SteamStickerInfo[] {
@@ -171,24 +209,65 @@ function extractStickers(
     const html = d.value;
 
     const imgTags = html.match(/<img[^>]+>/gi) ?? [];
-    for (const tag of imgTags) {
-      const srcMatch = /src="([^"]+)"/.exec(tag);
-      if (!srcMatch) continue;
-      const url = srcMatch[1];
+    const rowStart = stickers.length;
+    let searchPos = 0;
+    for (let i = 0; i < imgTags.length; i++) {
+      const tag = imgTags[i];
+      const idx = html.indexOf(tag, searchPos);
+      if (idx === -1) break;
+      searchPos = idx + tag.length;
 
-      const altMatch = /alt="([^"]*)"/.exec(tag);
-      let name = "";
-      if (altMatch) {
-        name = altMatch[1].replace(/^Sticker\s*\|\s*/i, "").trim();
-      }
+      const url = extractHtmlAttr(tag, "src");
+      if (!url) continue;
+
+      let name = parseStickerNameFromImgTag(tag);
 
       if (!name) {
-        const afterTag = html.slice(html.indexOf(tag) + tag.length);
-        const brName = /^\s*(?:<br\s*\/?\s*>)?\s*([^<]+)/i.exec(afterTag);
-        if (brName) name = brName[1].replace(/^Sticker:\s*/i, "").trim();
+        const afterTagPos = idx + tag.length;
+        const nextIdx =
+          i + 1 < imgTags.length ? html.indexOf(imgTags[i + 1], afterTagPos) : -1;
+        const chunkEnd = nextIdx === -1 ? html.length : nextIdx;
+        let chunk = html.slice(afterTagPos, chunkEnd);
+        chunk = chunk
+          .replace(/<br\s*\/?>/gi, "\n")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/&nbsp;/gi, " ");
+        const lines = chunk
+          .split(/\n+/)
+          .map((l) => normalizeStickerLabel(l))
+          .filter((l) => l.length > 0);
+        if (lines.length > 0) name = lines[0];
       }
 
-      if (url) stickers.push({ iconUrl: url, name: name || "Sticker" });
+      stickers.push({ iconUrl: url, name });
+    }
+
+    // Steam often lists all names once after the last sticker image (comma-separated).
+    const row = stickers.slice(rowStart);
+    if (row.length > 0) {
+      const unnamed = row.filter((s) => !s.name);
+      if (unnamed.length > 0 && imgTags.length > 0) {
+        const lastTag = imgTags[imgTags.length - 1];
+        const lastIdx = html.lastIndexOf(lastTag);
+        if (lastIdx !== -1) {
+          const tail = html
+            .slice(lastIdx + lastTag.length)
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&nbsp;/gi, " ");
+          const parts = tail
+            .split(/[,，]/)
+            .map((p) => normalizeStickerLabel(p))
+            .filter((p) => p.length > 0);
+          let pi = 0;
+          for (const s of row) {
+            if (!s.name && pi < parts.length) {
+              s.name = parts[pi]!;
+              pi++;
+            }
+          }
+        }
+      }
     }
   }
   return stickers;

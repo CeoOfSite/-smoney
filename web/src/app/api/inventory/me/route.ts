@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
-import { getCached, setCache } from "@/lib/inventory-cache";
+import { getCached, refreshCooldownRemainingUser, setCache } from "@/lib/inventory-cache";
 import { fetchGuestInventory, fetchOwnerInventory } from "@/lib/steam-inventory";
 import type { NormalizedItem } from "@/lib/steam-inventory";
 import { resolvePrice } from "@/lib/pricempire";
@@ -49,7 +49,11 @@ export async function GET() {
   const side = isOwner ? "owner" : "guest";
   const enriched = await enrichWithPrices(items, side);
 
-  return NextResponse.json({ items: enriched, count: enriched.length });
+  return NextResponse.json({
+    items: enriched,
+    count: enriched.length,
+    refreshCooldownRemainingMs: refreshCooldownRemainingUser(user.steamId),
+  });
 }
 
 async function enrichWithPrices(

@@ -4,7 +4,7 @@
  */
 import { NextResponse } from "next/server";
 
-import { getCached, setCache } from "@/lib/inventory-cache";
+import { getCached, refreshCooldownRemainingOwner, setCache } from "@/lib/inventory-cache";
 import { fetchOwnerInventory } from "@/lib/steam-inventory";
 import type { NormalizedItem } from "@/lib/steam-inventory";
 import { resolvePrice } from "@/lib/pricempire";
@@ -49,12 +49,18 @@ export async function GET() {
 
   try {
     const enriched = await enrichWithPrices(items, "owner");
-    return NextResponse.json({ items: enriched, count: enriched.length });
+    return NextResponse.json({
+      items: enriched,
+      count: enriched.length,
+      refreshCooldownRemainingMs: refreshCooldownRemainingOwner(ownerSteamId),
+    });
   } catch (e) {
     console.error("[/api/inventory/owner] enrichWithPrices error:", e);
-    return NextResponse.json(
-      { items: items.map((i) => ({ ...i, priceUsd: 0, priceSource: "unavailable", belowThreshold: true })), count: items.length },
-    );
+    return NextResponse.json({
+      items: items.map((i) => ({ ...i, priceUsd: 0, priceSource: "unavailable", belowThreshold: true })),
+      count: items.length,
+      refreshCooldownRemainingMs: refreshCooldownRemainingOwner(ownerSteamId),
+    });
   }
 }
 
