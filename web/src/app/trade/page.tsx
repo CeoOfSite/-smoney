@@ -641,7 +641,7 @@ function ItemCard({ item, isSelected, onToggle }: { item: InventoryItem; isSelec
   return (
     <div
       onClick={disabled ? undefined : onToggle}
-      className={`group relative flex flex-col overflow-hidden rounded-xl border transition-all ${
+      className={`group relative flex h-full min-h-[248px] flex-col overflow-hidden rounded-xl border transition-all ${
         disabled
           ? "border-zinc-800/40 bg-zinc-900/40 opacity-50"
           : isSelected
@@ -654,7 +654,7 @@ function ItemCard({ item, isSelected, onToggle }: { item: InventoryItem; isSelec
       )}
 
       {/* Top: Name + Wear */}
-      <div className="flex flex-col items-center gap-1 px-2 pt-2">
+      <div className="shrink-0 flex flex-col items-center gap-1 px-2 pt-2">
         <p className="w-full truncate text-center text-[11px] font-semibold leading-tight" style={{ color: nameColor }} title={item.name}>
           {item.name}
         </p>
@@ -665,8 +665,8 @@ function ItemCard({ item, isSelected, onToggle }: { item: InventoryItem; isSelec
         )}
       </div>
 
-      {/* Image area */}
-      <div className="relative flex items-center justify-center px-2 py-2">
+      {/* Image area — grows so footer aligns across the row */}
+      <div className="relative flex min-h-[88px] flex-1 items-center justify-center px-2 py-2">
         {isUnavailable ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -699,31 +699,36 @@ function ItemCard({ item, isSelected, onToggle }: { item: InventoryItem; isSelec
         )}
       </div>
 
-      {/* Bottom: Phase, Float, Price */}
-      <div className="relative flex flex-col gap-0.5 px-2 pb-2">
-        {/* Phase label */}
-        {item.phaseLabel && (
-          <p className={`text-center text-[11px] font-bold ${phaseTextColor(item.phaseLabel)}`}>
-            {item.phaseLabel}
-          </p>
-        )}
+      {/* Footer: fixed slots so float bars and prices line up in a grid row */}
+      <div className="relative mt-auto flex w-full shrink-0 flex-col gap-0.5 px-2 pb-2 pt-0.5">
+        <div className="flex min-h-[18px] items-center justify-center">
+          {item.phaseLabel ? (
+            <p className={`text-center text-[11px] font-bold leading-tight ${phaseTextColor(item.phaseLabel)}`}>
+              {item.phaseLabel}
+            </p>
+          ) : null}
+        </div>
 
-        {/* Float */}
-        {item.floatValue != null && (
-          <div>
-            <p className="text-[10px] text-zinc-400">Float: <span className="font-medium text-zinc-200">{item.floatValue.toFixed(item.floatValue < 0.01 ? 6 : 4)}</span></p>
-            <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-zinc-800">
-              <div className="h-full rounded-full" style={{ width: `${Math.min(item.floatValue * 100, 100)}%`, backgroundColor: floatBarColor(item.floatValue) }} />
-            </div>
-          </div>
-        )}
+        <div className="flex min-h-[34px] flex-col justify-end">
+          {item.floatValue != null ? (
+            <>
+              <p className="text-[10px] leading-tight text-zinc-400">
+                Float: <span className="font-medium text-zinc-200">{item.floatValue.toFixed(item.floatValue < 0.01 ? 6 : 4)}</span>
+              </p>
+              <div className="mt-0.5 h-1 w-full shrink-0 overflow-hidden rounded-full bg-zinc-800">
+                <div className="h-full rounded-full" style={{ width: `${Math.min(item.floatValue * 100, 100)}%`, backgroundColor: floatBarColor(item.floatValue) }} />
+              </div>
+            </>
+          ) : (
+            <div className="h-[34px] shrink-0" aria-hidden />
+          )}
+        </div>
 
-        {/* Price */}
-        <div className="mt-1 flex items-baseline justify-between">
+        <div className="flex min-h-[22px] items-end justify-between">
           {item.priceSource === "unavailable" || isUnavailable ? (
             <span className="text-[10px] text-zinc-600">—</span>
           ) : (
-            <span className="text-[13px] font-bold text-amber-400">{fmtPrice(item.priceUsd)}</span>
+            <span className="text-[13px] font-bold leading-none text-amber-400">{fmtPrice(item.priceUsd)}</span>
           )}
           {item.priceSource === "manual" && <span className="text-[8px] text-amber-700">manual</span>}
         </div>
