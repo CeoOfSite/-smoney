@@ -10,7 +10,7 @@ import { getCached, setCache } from "@/lib/inventory-cache";
 import { fetchGuestInventory, fetchOwnerInventory } from "@/lib/steam-inventory";
 import type { NormalizedItem } from "@/lib/steam-inventory";
 import { resolvePrice } from "@/lib/pricempire";
-import { mergeCsFloatCache, startBackgroundEnrichment } from "@/lib/csfloat";
+import { enrichFromInspectLinks } from "@/lib/csfloat";
 
 export const dynamic = "force-dynamic";
 
@@ -44,11 +44,8 @@ export async function GET() {
       }
       items = result.items;
     }
-    mergeCsFloatCache(items);
-    startBackgroundEnrichment(items);
+    enrichFromInspectLinks(items);
     setCache(user.steamId, items);
-  } else {
-    mergeCsFloatCache(items);
   }
 
   const side = isOwner ? "owner" : "guest";

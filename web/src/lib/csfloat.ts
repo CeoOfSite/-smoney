@@ -1,18 +1,12 @@
 /**
- * CSFloat API integration for float values and Doppler phase detection.
+ * CS2 inspect link decoder for float values and Doppler phase detection.
  *
- * Steam's community endpoint does NOT return asset_properties (float, paint index)
- * for unauthenticated server-side requests. CSFloat API fills this gap by decoding
- * inspect links to get float values and paint indices.
- *
- * Strategy:
- * - Background enrichment: after inventory is fetched from Steam, CSFloat data is
- *   fetched asynchronously with rate limiting (~3 req/sec).
- * - In-memory cache: results are cached by assetId to avoid redundant API calls.
- * - Merge on read: when inventory is served, cached CSFloat data is merged in.
+ * Uses @csfloat/cs2-inspect-serializer to decode CS2 inspect links locally.
+ * CS2 inspect links now self-encode item properties (float, paint index, etc.),
+ * so no external API calls are needed.
  */
 
-import https from "node:https";
+import { decodeLink } from "@csfloat/cs2-inspect-serializer";
 
 const PAINT_INDEX_PHASE: Record<number, string> = {
   415: "Ruby",
@@ -29,78 +23,45 @@ const PAINT_INDEX_PHASE: Record<number, string> = {
   572: "Phase 4",
 };
 
-export interface CsFloatData {
+export interface InspectData {
   floatValue: number;
   paintIndex: number;
   paintSeed: number;
 }
 
-const cache = new Map<string, CsFloatData>();
-let enrichmentRunning = false;
-let lastEnrichmentStart = 0;
-const ENRICHMENT_COOLDOWN_MS = 5 * 60 * 1000;
-
-function httpsGet(
-  url: string,
-  headers: Record<string, string> = {},
-): Promise<{ status: number; body: string }> {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers }, (res) => {
-      const chunks: Buffer[] = [];
-      res.on("data", (c) => chunks.push(c));
-      res.on("end", () => {
-        resolve({
-          status: res.statusCode ?? 0,
-          body: Buffer.concat(chunks).toString("utf-8"),
-        });
-      });
-    });
-    req.on("error", reject);
-    req.setTimeout(10_000, () => {
-      req.destroy();
-      reject(new Error("csfloat timeout"));
-    });
-  });
-}
-
-async function fetchCsFloat(
-  inspectLink: string,
-  apiKey: string,
-): Promise<CsFloatData | null> {
-  const url = `https://api.csfloat.com/?url=${encodeURIComponent(inspectLink)}`;
+export function decodeInspectLink(inspectLink: string): InspectData | null {
   try {
-    const { status, body } = await httpsGet(url, {
-      Authorization: apiKey,
-    });
-    if (status === 429) {
-      console.warn("[csfloat] rate limited, backing off");
-      return null;
-    }
-    if (status !== 200) {
-      console.warn(`[csfloat] HTTP ${status}: ${body.slice(0, 200)}`);
-      return null;
-    }
-    const json = JSON.parse(body);
-    const info = json?.iteminfo;
-    if (!info) return null;
+    const decoded = decodeLink(inspectLink);
+    if (!decoded) return null;
 
     return {
-      floatValue: parseFloat(info.floatvalue) || 0,
-      paintIndex: parseInt(info.paintindex) || 0,
-      paintSeed: parseInt(info.paintseed) || 0,
+      floatValue: decoded.paintwear ?? 0,
+      paintIndex: decoded.paintindex ?? 0,
+      paintSeed: decoded.paintseed ?? 0,
     };
-  } catch (e) {
-    console.error("[csfloat] fetch error:", e);
+  } catch {
+    // New CS2 hex-encoded links decode above; old S/A/D format links fail.
+    // Try extracting the D parameter and decoding it as hex.
+    try {
+      const dMatch = /D([0-9A-Fa-f]{10,})/.exec(inspectLink);
+      if (dMatch) {
+        const { decodeHex } = require("@csfloat/cs2-inspect-serializer") as {
+          decodeHex: (hex: string) => { paintwear?: number; paintindex?: number; paintseed?: number };
+        };
+        const decoded = decodeHex(dMatch[1]);
+        if (decoded) {
+          return {
+            floatValue: decoded.paintwear ?? 0,
+            paintIndex: decoded.paintindex ?? 0,
+            paintSeed: decoded.paintseed ?? 0,
+          };
+        }
+      }
+    } catch {
+      // D param is decimal (old format), can't decode locally
+    }
     return null;
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-export function getCachedCsFloat(assetId: string): CsFloatData | null {
-  return cache.get(assetId) ?? null;
 }
 
 export function phaseFromPaintIndex(
@@ -121,101 +82,41 @@ interface EnrichableItem {
 }
 
 /**
- * Merge cached CSFloat data into items (mutates items in-place).
- * Returns the number of items enriched.
+ * Enrich items with float values and Doppler phases by decoding inspect links.
+ * Mutates items in-place. Returns the number of items enriched.
  */
-export function mergeCsFloatCache(items: EnrichableItem[]): number {
+export function enrichFromInspectLinks(items: EnrichableItem[]): number {
   let count = 0;
   for (const item of items) {
-    const data = cache.get(item.assetId);
+    if (!item.inspectLink) continue;
+
+    const data = decodeInspectLink(item.inspectLink);
     if (!data) continue;
-    if (data.floatValue > 0) item.floatValue = data.floatValue;
-    const phase = phaseFromPaintIndex(data.paintIndex, item.marketHashName);
-    if (phase) item.phaseLabel = phase;
-    count++;
-  }
-  return count;
-}
 
-/**
- * Start background CSFloat enrichment for items.
- * Processes items with inspect links that aren't already cached.
- * Rate-limited to ~3 requests/second.
- */
-export function startBackgroundEnrichment(
-  items: EnrichableItem[],
-  dopplerOnly = false,
-): void {
-  const apiKey = process.env.CSFLOAT_API_KEY;
-  if (!apiKey) {
-    console.warn("[csfloat] CSFLOAT_API_KEY not set, skipping enrichment");
-    return;
-  }
-
-  if (enrichmentRunning) {
-    console.log("[csfloat] enrichment already in progress, skipping");
-    return;
-  }
-  if (Date.now() - lastEnrichmentStart < ENRICHMENT_COOLDOWN_MS) {
-    console.log("[csfloat] enrichment cooldown active, skipping");
-    return;
-  }
-
-  const toEnrich = items.filter((i) => {
-    if (!i.inspectLink) return false;
-    if (cache.has(i.assetId)) return false;
-    if (dopplerOnly && !i.marketHashName.toLowerCase().includes("doppler"))
-      return false;
-    return true;
-  });
-
-  if (toEnrich.length === 0) {
-    console.log("[csfloat] nothing to enrich (all cached or no inspect links)");
-    return;
-  }
-
-  console.log(
-    `[csfloat] starting background enrichment: ${toEnrich.length} items (doppler_only=${dopplerOnly})`,
-  );
-  enrichmentRunning = true;
-  lastEnrichmentStart = Date.now();
-
-  (async () => {
-    let success = 0;
-    let fail = 0;
-    let rateLimited = 0;
-
-    for (const item of toEnrich) {
-      try {
-        const data = await fetchCsFloat(item.inspectLink!, apiKey);
-        if (data) {
-          cache.set(item.assetId, data);
-          success++;
-        } else {
-          fail++;
-        }
-      } catch {
-        fail++;
-      }
-
-      if (rateLimited > 3) {
-        console.warn("[csfloat] too many rate limits, stopping enrichment");
-        break;
-      }
-
-      await sleep(350);
+    if (data.floatValue > 0) {
+      item.floatValue = data.floatValue;
     }
 
-    console.log(
-      `[csfloat] enrichment done: success=${success}, fail=${fail}, cached_total=${cache.size}`,
-    );
-    enrichmentRunning = false;
-  })();
-}
+    const phase = phaseFromPaintIndex(data.paintIndex, item.marketHashName);
+    if (phase) {
+      item.phaseLabel = phase;
+    }
 
-export function getCacheStats(): {
-  size: number;
-  enrichmentRunning: boolean;
-} {
-  return { size: cache.size, enrichmentRunning };
+    count++;
+  }
+
+  const withFloat = items.filter((i) => i.floatValue != null && i.floatValue > 0).length;
+  const withPhase = items.filter((i) => i.phaseLabel != null).length;
+  const withInspect = items.filter((i) => i.inspectLink).length;
+  console.log(
+    `[csfloat] inspect decode: total=${items.length}, with_inspect=${withInspect}, decoded=${count}, with_float=${withFloat}, with_phase=${withPhase}`,
+  );
+  if (withInspect > 0 && count === 0) {
+    const sample = items.find((i) => i.inspectLink);
+    if (sample) {
+      console.log(`[csfloat] sample inspect link: ${sample.inspectLink?.slice(0, 200)}`);
+    }
+  }
+
+  return count;
 }
