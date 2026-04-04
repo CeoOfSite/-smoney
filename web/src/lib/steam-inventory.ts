@@ -66,7 +66,7 @@ export function steamId64FromPartner(partner: string): string {
 // ---------------------------------------------------------------------------
 
 const PAINT_INDEX_PHASE: Record<number, string> = {
-  // Doppler
+  // Doppler (gen 1 — Bayonet, Flip, Gut, Karambit, M9, etc.)
   415: "Ruby",
   416: "Sapphire",
   417: "Black Pearl",
@@ -74,28 +74,21 @@ const PAINT_INDEX_PHASE: Record<number, string> = {
   419: "Phase 2",
   420: "Phase 3",
   421: "Phase 4",
-  // Gamma Doppler
+  // Gamma Doppler (gen 1)
   568: "Emerald",
   569: "Phase 1",
   570: "Phase 2",
   571: "Phase 3",
   572: "Phase 4",
-  // Doppler (gen 2 — newer weapons)
-  617: "Ruby",
-  618: "Sapphire",
-  619: "Black Pearl",
-  620: "Phase 1",
-  621: "Phase 2",
-  622: "Phase 3",
-  623: "Phase 4",
-  // Doppler (gen 3 — newest weapons)
-  853: "Ruby",
-  854: "Sapphire",
-  855: "Black Pearl",
-  856: "Phase 1",
-  857: "Phase 2",
-  858: "Phase 3",
-  859: "Phase 4",
+  // Doppler gen 2 (Butterfly, Shadow Daggers) — verified via cs2items.pro
+  617: "Black Pearl",
+  618: "Phase 2",
+  619: "Sapphire",
+  // Doppler gen 3 (Talon Knife) — verified via cs2items.pro
+  852: "Phase 1",
+  853: "Phase 2",
+  854: "Phase 3",
+  855: "Phase 4",
 };
 
 function extractFromAssetProperties(
