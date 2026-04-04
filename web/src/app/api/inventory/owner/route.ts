@@ -37,11 +37,13 @@ export async function GET() {
       );
     }
     const raw = result.items;
-    const locked = raw.filter((i) => !i.tradable).length;
-    const withLockDate = raw.filter((i) => !!i.tradeLockUntil).length;
-    items = raw.filter((i) => i.tradable || !!i.tradeLockUntil);
-    const hidden = raw.length - items.length;
-    console.log(`[/api/inventory/owner] loaded ${raw.length} items → shown ${items.length} (tradable=false: ${locked}, withLockDate: ${withLockDate}, hidden_permanent_nontradable: ${hidden})`);
+    const JUNK_TYPES = ["Loyalty Badge", "Collectible Coin", "Service Medal", "Season Coin"];
+    items = raw.filter((i) => {
+      if (!i.type) return true;
+      return !JUNK_TYPES.some((j) => i.type!.includes(j));
+    });
+    const locked = items.filter((i) => !i.tradable).length;
+    console.log(`[/api/inventory/owner] loaded ${raw.length} items → shown ${items.length} (hidden_junk=${raw.length - items.length}, tradable=false: ${locked})`);
     setCache(ownerSteamId, items);
   }
 

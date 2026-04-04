@@ -398,7 +398,14 @@ async function fetchViaCommunityNew(
         }
       }
 
-      console.log(`[steam-inv] community-new page=${page}: +${json.assets?.length ?? 0} assets (total=${allAssets.length}, more=${json.more_items ?? 0})`);
+      console.log(`[steam-inv] community-new page=${page}: +${json.assets?.length ?? 0} assets (total=${allAssets.length}, more=${json.more_items ?? 0}, steam_total=${json.total_inventory_count ?? "?"})`);
+      if (page === 0) {
+        const sample = (json.assets ?? []).slice(0, 5);
+        for (const a of sample) {
+          const desc = (json.descriptions ?? []).find((d: any) => d.classid === a.classid && d.instanceid === a.instanceid);
+          if (desc) console.log(`[steam-inv] sample: ${desc.name} tradable=${desc.tradable} marketable=${desc.marketable}`);
+        }
+      }
 
       if (!json.more_items || !json.last_assetid) break;
       startAssetId = json.last_assetid;
