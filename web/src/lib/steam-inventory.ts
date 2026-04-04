@@ -1,10 +1,9 @@
 /**
  * Steam CS2 inventory fetching and normalization.
  *
- * Multiple fetch strategies are attempted in order:
- * 1. IEconService API (with Steam Web API Key)
- * 2. Community endpoint (new format)
- * 3. Community endpoint (old JSON format /inventory/json/)
+ * Fetch strategies attempted in order:
+ * 1. Community endpoint (new format — includes asset_properties with float/phase)
+ * 2. Community endpoint (old JSON format /inventory/json/)
  *
  * Steam aggressively blocks server-side requests from cloud IPs.
  * We use Node.js native https to avoid Next.js fetch patching interference.
@@ -397,38 +396,6 @@ function httpsGet(
 }
 
 // ---------------------------------------------------------------------------
-// Strategy 1: IEconService API
-// ---------------------------------------------------------------------------
-
-async function fetchViaApi(
-  steamId64: string,
-  apiKey: string,
-): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
-  const url = `https://api.steampowered.com/IEconService/GetInventoryItemsWithDescriptions/v1/?key=${apiKey}&steamid=${steamId64}&appid=${CS2_APP_ID}&contextid=${CONTEXT_ID}&get_descriptions=1&count=1000&language=english`;
-  console.log(`[steam-inv] strategy=api steamid=${steamId64} appid=${CS2_APP_ID}`);
-
-  try {
-    const { status, body } = await httpsGet(url);
-    console.log(`[steam-inv] api HTTP ${status}, body_len=${body.length}, preview: ${body.slice(0, 300)}`);
-    if (status !== 200) {
-      return { ok: false, error: `steam_api_${status}` };
-    }
-    const json = JSON.parse(body);
-    const data = json?.response;
-    const keys = data ? Object.keys(data) : [];
-    console.log(`[steam-inv] api response keys: [${keys.join(",")}] total=${data?.total_inventory_count}`);
-    if (!data?.assets && !data?.descriptions) {
-      return { ok: false, error: "empty_or_private_inventory" };
-    }
-    console.log(`[steam-inv] api OK: ${data.assets?.length ?? 0} assets, ${data.descriptions?.length ?? 0} descriptions`);
-    return { ok: true, data };
-  } catch (e) {
-    console.error(`[steam-inv] api error:`, e);
-    return { ok: false, error: "steam_api_error" };
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Strategy 2: Community endpoint (new format)
 // ---------------------------------------------------------------------------
 
@@ -554,15 +521,8 @@ async function fetchViaCommunityOld(
 
 async function fetchSteamInventoryRaw(
   steamId64: string,
-  apiKey?: string,
 ): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
   const errors: string[] = [];
-
-  if (apiKey) {
-    const r = await fetchViaApi(steamId64, apiKey);
-    if (r.ok) return r;
-    errors.push(`api:${r.error}`);
-  }
 
   const r2 = await fetchViaCommunityNew(steamId64);
   if (r2.ok) return r2;
@@ -583,12 +543,10 @@ async function fetchSteamInventoryRaw(
 export async function fetchOwnerInventory(): Promise<
   { ok: true; items: NormalizedItem[] } | { ok: false; error: string }
 > {
-  const apiKey = process.env.STEAM_WEB_API_KEY;
   const ownerSteamId = process.env.OWNER_STEAM_ID;
-  if (!apiKey) return { ok: false, error: "missing_steam_api_key" };
   if (!ownerSteamId) return { ok: false, error: "missing_owner_steam_id" };
 
-  const result = await fetchSteamInventoryRaw(ownerSteamId, apiKey);
+  const result = await fetchSteamInventoryRaw(ownerSteamId);
   if (!result.ok) return result;
   return { ok: true, items: normalizeInventory(result.data, ownerSteamId) };
 }
