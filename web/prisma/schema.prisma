@@ -89,11 +89,13 @@ model PricingSettings {
   updatedAt             DateTime @updatedAt
 }
 
-// Manual price overrides for owner items by assetId
+// Manual overrides for owner items by assetId: fixed USD or extra % on catalog (after global owner markup)
 model OwnerManualPrice {
-  id       String   @id @default(cuid())
-  assetId  String   @unique
-  priceUsd Decimal  @db.Decimal(14, 4)
-  note     String?
-  setAt    DateTime @default(now())
+  id            String   @id @default(cuid())
+  assetId       String   @unique
+  mode          String   @default("fixed") // "fixed" | "markup_percent"
+  priceUsd      Decimal? @db.Decimal(14, 4) // dollars when mode=fixed
+  markupPercent Float? // extra % when mode=markup_percent (applied after markupOwnerPercent)
+  note          String?
+  setAt         DateTime @default(now())
 }

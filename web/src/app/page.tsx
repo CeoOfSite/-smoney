@@ -22,6 +22,10 @@ export default async function Home({ searchParams }: Props) {
   const signedInNotice = sp.signed_in === "1" && !!user;
 
   return (
-    <TradePageClient authError={authError} signedInNotice={signedInNotice} />
+    <TradePageClient
+      authError={authError}
+      signedInNotice={signedInNotice}
+      isAdmin={!!user?.isAdmin}
+    />
   );
 }

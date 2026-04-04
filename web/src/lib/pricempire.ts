@@ -145,24 +145,14 @@ export async function resolvePrice(
 ): Promise<ResolvedPrice> {
   const settings = await getPricingSettings();
 
-  // Check manual price first (owner items only)
-  if (side === "owner" && assetId) {
-    const manual = await prisma.ownerManualPrice.findUnique({
-      where: { assetId },
-    });
-    if (manual) {
-      return {
-        priceUsd: Math.round(Number(manual.priceUsd) * 100),
-        source: "manual",
-        belowThreshold: false,
-      };
-    }
-  }
+  const manual =
+    side === "owner" && assetId
+      ? await prisma.ownerManualPrice.findUnique({ where: { assetId } })
+      : null;
 
   const phaseKey = phaseLabel ?? "default";
   const provider = settings.selectedPriceProvider;
 
-  // Try exact phase match, then fallback to "default"
   let catalogItem = await prisma.priceCatalogItem.findUnique({
     where: {
       marketHashName_phaseKey_providerKey: {
@@ -185,12 +175,37 @@ export async function resolvePrice(
     });
   }
 
+  const manualMode = manual?.mode === "markup_percent" ? "markup_percent" : "fixed";
+
+  // Fixed USD override — no catalog required
+  if (manual && manualMode === "fixed" && manual.priceUsd != null) {
+    const dollars = Number(manual.priceUsd);
+    if (dollars > 0) {
+      return {
+        priceUsd: Math.round(dollars * 100),
+        source: "manual",
+        belowThreshold: false,
+      };
+    }
+  }
+
   if (!catalogItem) {
     return { priceUsd: 0, source: "unavailable", belowThreshold: true };
   }
 
   const baseCents = catalogItem.priceUsd;
   const baseDollars = baseCents / 100;
+
+  // Extra % on catalog (after global owner markup), still counts as manual for UI
+  if (manual && manualMode === "markup_percent" && manual.markupPercent != null) {
+    const withOwner = Math.round(baseCents * (1 + settings.markupOwnerPercent / 100));
+    const finalCents = Math.round(withOwner * (1 + manual.markupPercent / 100));
+    return {
+      priceUsd: finalCents,
+      source: "manual",
+      belowThreshold: false,
+    };
+  }
 
   if (baseDollars < settings.minPriceThresholdUsd) {
     return { priceUsd: baseCents, source: "catalog", belowThreshold: true };

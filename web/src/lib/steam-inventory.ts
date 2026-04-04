@@ -116,9 +116,15 @@ function extractFromAssetProperties(
   return { floatValue, paintIndex };
 }
 
+/** Ruby / Sapphire / Phase N etc. apply only to Doppler (incl. Gamma) knives — not to other skins' stickers or descriptions. */
+function isDopplerFamilySkin(name: string): boolean {
+  const n = name.toLowerCase();
+  return n.includes("doppler"); // matches "Gamma Doppler" too
+}
+
 function phaseFromPaintIndex(paintIndex: number | null, itemName: string): string | null {
   if (paintIndex == null) return null;
-  if (!itemName.toLowerCase().includes("doppler")) return null;
+  if (!isDopplerFamilySkin(itemName)) return null;
   return PAINT_INDEX_PHASE[paintIndex] ?? null;
 }
 
@@ -406,7 +412,9 @@ export function normalizeInventory(raw: any, ownerSteamId?: string): NormalizedI
     const propsForAsset = assetPropsMap.get(String(assetId));
     const { floatValue: apFloat, paintIndex } = extractFromAssetProperties(propsForAsset);
     const apPhase = phaseFromPaintIndex(paintIndex, itemName);
-    const phase = apPhase ?? detectPhaseFromTagsDescs(desc.descriptions, desc.tags);
+    const phase =
+      apPhase ??
+      (isDopplerFamilySkin(itemName) ? detectPhaseFromTagsDescs(desc.descriptions, desc.tags) : null);
     const floatVal = apFloat ?? extractFloat(desc.descriptions);
 
     const inspectRaw = extractInspectLink(desc.actions);

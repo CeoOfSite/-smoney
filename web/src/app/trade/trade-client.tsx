@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { formatRefreshCooldownRu, OWNER_REFRESH_COOLDOWN_MS, USER_REFRESH_COOLDOWN_MS } from "@/lib/inventory-refresh-limits";
+import {
+  checkTradeBalance,
+  MAX_TRADE_ITEMS_PER_SIDE,
+  TRADE_MAX_OVERPAY_PERCENT,
+  tradeOverpayPercent,
+} from "@/lib/trade-balance";
 
 import styles from "./page.module.css";
 
@@ -83,6 +89,15 @@ function fmtPrice(cents: number) {
   return `${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })} $`;
 }
 
+function ruRequirementsHeading(pending: number): string {
+  if (pending <= 0) return "";
+  const m10 = pending % 10;
+  const m100 = pending % 100;
+  if (m10 === 1 && m100 !== 11) return `Осталось ${pending} требование`;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return `Осталось ${pending} требования`;
+  return `Осталось ${pending} требований`;
+}
+
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
@@ -90,9 +105,11 @@ function fmtPrice(cents: number) {
 export default function TradePageClient({
   authError = null,
   signedInNotice = false,
+  isAdmin = false,
 }: {
   authError?: string | null;
   signedInNotice?: boolean;
+  isAdmin?: boolean;
 } = {}) {
   const [ownerItems, setOwnerItems] = useState<InventoryItem[]>([]);
   const [myItems, setMyItems] = useState<InventoryItem[]>([]);
@@ -112,6 +129,7 @@ export default function TradePageClient({
 
   const [selectedMy, setSelectedMy] = useState<Set<string>>(new Set());
   const [selectedOwner, setSelectedOwner] = useState<Set<string>>(new Set());
+  const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
 
   // Per-panel search/sort
   const [mySearch, setMySearch] = useState("");
@@ -217,9 +235,25 @@ export default function TradePageClient({
     } finally { setR(false); }
   }, []);
 
-  // ------ selection ------
+  // ------ selection (max MAX_TRADE_ITEMS_PER_SIDE per side) ------
   const toggle = useCallback((set: React.Dispatch<React.SetStateAction<Set<string>>>, id: string) => {
-    set((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    set((prev) => {
+      if (prev.has(id)) {
+        const n = new Set(prev);
+        n.delete(id);
+        return n;
+      }
+      if (prev.size >= MAX_TRADE_ITEMS_PER_SIDE) {
+        queueMicrotask(() => {
+          setSelectionNotice(`Не более ${MAX_TRADE_ITEMS_PER_SIDE} предметов с одной стороны`);
+          window.setTimeout(() => setSelectionNotice(null), 2800);
+        });
+        return prev;
+      }
+      const n = new Set(prev);
+      n.add(id);
+      return n;
+    });
   }, []);
 
   // ------ submit trade ------
@@ -244,8 +278,41 @@ export default function TradePageClient({
   const selOwnerItems = ownerItems.filter((i) => selectedOwner.has(i.assetId));
   const myTotal = selMyItems.reduce((s, i) => s + (i.belowThreshold ? 0 : i.priceUsd), 0);
   const ownerTotal = selOwnerItems.reduce((s, i) => s + (i.belowThreshold ? 0 : i.priceUsd), 0);
-  const overpay = ownerTotal > 0 ? ((myTotal - ownerTotal) / ownerTotal) * 100 : 0;
-  const canSubmit = selectedMy.size > 0 && selectedOwner.size > 0 && !submitting;
+  const tradeSelectionReady = selectedMy.size > 0 && selectedOwner.size > 0;
+  const tradeBalance = tradeSelectionReady ? checkTradeBalance(myTotal, ownerTotal) : null;
+  const overpayPct = ownerTotal > 0 ? tradeOverpayPercent(myTotal, ownerTotal) ?? 0 : 0;
+  const overpayBarFillPct =
+    ownerTotal <= 0 ? 0 : overpayPct < 0 ? 0 : Math.min(100, (overpayPct / TRADE_MAX_OVERPAY_PERCENT) * 100);
+  const overpayBarColor =
+    overpayPct < 0 ? "#f97316" : overpayPct > TRADE_MAX_OVERPAY_PERCENT ? "#ef4444" : "#22c55e";
+  const overpayWordColor =
+    overpayPct < 0 || overpayPct > TRADE_MAX_OVERPAY_PERCENT
+      ? "text-red-400"
+      : "text-emerald-500";
+  const canSubmit = tradeSelectionReady && tradeBalance?.ok === true && !submitting;
+
+  const requirementRows: { done: boolean; text: string; issue?: boolean }[] = [
+    { done: selectedMy.size > 0, text: "Добавьте ваши предметы" },
+    { done: selectedOwner.size > 0, text: "Выберите предметы магазина" },
+  ];
+  if (tradeBalance && !tradeBalance.ok) {
+    if (tradeBalance.reason === "overpay_too_high") {
+      requirementRows.push({
+        done: false,
+        issue: true,
+        text: `Уменьшите переплату на ${fmtPrice(tradeBalance.excessCents)} (макс. ${TRADE_MAX_OVERPAY_PERCENT}%)`,
+      });
+    } else if (tradeBalance.reason === "overpay_too_low") {
+      requirementRows.push({
+        done: false,
+        issue: true,
+        text: `Добавьте предметы с вашей стороны или уберите с нашей на ${fmtPrice(tradeBalance.shortfallCents)} (переплата не ниже 0%)`,
+      });
+    } else {
+      requirementRows.push({ done: false, issue: true, text: tradeBalance.message });
+    }
+  }
+  const pendingRequirements = requirementRows.filter((r) => !r.done).length;
 
   function sortItems(items: InventoryItem[], s: string) {
     return [...items].sort((a, b) => {
@@ -314,6 +381,12 @@ export default function TradePageClient({
         </div>
       ) : null}
 
+      {selectionNotice ? (
+        <div className="border-b border-amber-800/40 bg-amber-950/25 px-5 py-2 text-sm text-amber-200" role="status">
+          {selectionNotice}
+        </div>
+      ) : null}
+
       {/* Messages */}
       {error && <div className="bg-red-900/30 border-b border-red-800/40 px-5 py-2 text-sm text-red-400">{error}</div>}
       {tradeSuccess && <div className="bg-emerald-900/30 border-b border-emerald-800/40 px-5 py-2 text-sm text-emerald-400">{tradeSuccess}</div>}
@@ -330,6 +403,7 @@ export default function TradePageClient({
             total={myTotal}
             onRemove={(id) => toggle(setSelectedMy, id)}
             count={selectedMy.size}
+            maxPerSide={MAX_TRADE_ITEMS_PER_SIDE}
           />
 
           {/* Content — each branch gets flex-1 + overflow-y-auto so it always fills the column */}
@@ -412,25 +486,68 @@ export default function TradePageClient({
               </div>
             </div>
 
-            {/* Overpay + Submit row */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-3 py-2">
-                <span className="text-[10px] text-zinc-500">Переплата</span>
-                <span className={`text-xs font-bold ${overpay > 0 ? "text-red-400" : overpay < 0 ? "text-emerald-400" : "text-zinc-400"}`}>
-                  {overpay > 0 ? "+" : ""}{overpay.toFixed(1)}%
-                </span>
-              </div>
-              <button
-                onClick={submitTrade}
-                disabled={!canSubmit}
-                className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition-all ${
-                  canSubmit
-                    ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20 hover:bg-amber-500 active:scale-[0.98]"
-                    : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
-                }`}
+            {tradeBalance && !tradeBalance.ok && tradeSelectionReady ? (
+              <div
+                className="flex gap-2 rounded-lg border border-amber-700/35 bg-zinc-900/90 px-3 py-2.5 text-[11px] leading-relaxed text-amber-100/95"
+                role="alert"
               >
-                {submitting ? "Отправка..." : "Отправить обмен"}
-              </button>
+                <span className="shrink-0 text-amber-500" aria-hidden>
+                  ⚠
+                </span>
+                <p>{tradeBalance.message}</p>
+              </div>
+            ) : null}
+
+            {/* Overpay + Submit */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-[10px] font-semibold ${overpayWordColor}`}>Переплата</span>
+                    <span
+                      className={`text-xs font-bold tabular-nums ${
+                        overpayPct < 0
+                          ? "text-orange-400"
+                          : overpayPct > TRADE_MAX_OVERPAY_PERCENT
+                            ? "text-red-400"
+                            : "text-emerald-400/90"
+                      }`}
+                    >
+                      {overpayPct > 0 ? "+" : ""}
+                      {overpayPct.toFixed(1)}%
+                      <span className="ml-1 text-[9px] font-normal text-zinc-500">(0–{TRADE_MAX_OVERPAY_PERCENT}%)</span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+                    <div
+                      className="h-full rounded-full transition-[width,background-color] duration-300"
+                      style={{ width: `${overpayBarFillPct}%`, backgroundColor: overpayBarColor }}
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={submitTrade}
+                  disabled={!canSubmit}
+                  className={`shrink-0 rounded-lg px-4 py-2.5 text-xs font-bold transition-all ${
+                    canSubmit
+                      ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20 hover:bg-amber-500 active:scale-[0.98]"
+                      : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
+                  }`}
+                >
+                  {submitting ? "Отправка..." : "Отправить обмен"}
+                </button>
+              </div>
+            </div>
+
+            {/* Market info (reference-style) */}
+            <div className="flex flex-col items-center gap-2.5" role="note">
+              <div className="w-full rounded-lg border border-amber-900/25 bg-[#0c0c0e] px-3.5 py-3 text-center text-[11px] font-medium leading-snug text-amber-500">
+                некоторые трейды могут быть отклонены из-за нестабильности рынка
+              </div>
+              <p className="w-full max-w-[260px] text-center text-[10px] leading-relaxed text-zinc-500">
+                Цены могут отличаться из-за износа, паттерна или наклеек.
+              </p>
             </div>
 
             {/* Divider */}
@@ -490,9 +607,15 @@ export default function TradePageClient({
 
             {/* Requirements */}
             <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/50 p-3">
+              {pendingRequirements > 0 ? (
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  {ruRequirementsHeading(pendingRequirements)}
+                </p>
+              ) : null}
               <div className="space-y-1.5">
-                <ReqLine done={selectedMy.size > 0} text="Добавьте ваши предметы" />
-                <ReqLine done={selectedOwner.size > 0} text="Выберите предметы магазина" />
+                {requirementRows.map((row, idx) => (
+                  <ReqLine key={`req-${idx}`} done={row.done} text={row.text} issue={row.issue} />
+                ))}
               </div>
             </div>
           </div>
@@ -507,6 +630,7 @@ export default function TradePageClient({
             total={ownerTotal}
             onRemove={(id) => toggle(setSelectedOwner, id)}
             count={selectedOwner.size}
+            maxPerSide={MAX_TRADE_ITEMS_PER_SIDE}
             isRight
           />
 
@@ -516,10 +640,15 @@ export default function TradePageClient({
             prefix="owner"
             onRefresh={() => doRefresh("owner", setOwnerRefreshing, setOwnerCooldown, loadOwner)}
             refreshing={ownerRefreshing} cooldown={ownerCooldown}
-            totalValue={ownerItems.reduce((s, i) => s + (i.belowThreshold ? 0 : i.priceUsd), 0)}
           />
           <div className="flex-1 overflow-y-auto p-2">
-            <ItemGrid items={filterOwner(ownerItems, ownerSearch, ownerSort)} side="owner" selected={selectedOwner} onToggle={(id) => toggle(setSelectedOwner, id)} />
+                <ItemGrid
+                  items={filterOwner(ownerItems, ownerSearch, ownerSort)}
+                  side="owner"
+                  selected={selectedOwner}
+                  onToggle={(id) => toggle(setSelectedOwner, id)}
+                  showAssetId={isAdmin}
+                />
           </div>
         </div>
       </div>
@@ -532,38 +661,49 @@ export default function TradePageClient({
 // ---------------------------------------------------------------------------
 
 function SelectedStrip({
-  label, sublabel, items, total, onRemove, count, isRight,
+  label, sublabel, items, total, onRemove, count, maxPerSide, isRight,
 }: {
   label: string; sublabel: string; items: InventoryItem[]; total: number;
-  onRemove: (id: string) => void; count: number; isRight?: boolean;
+  onRemove: (id: string) => void; count: number; maxPerSide: number; isRight?: boolean;
 }) {
   return (
     <div className="border-b border-zinc-800/50 bg-[#111113] px-4 py-3">
-      <div className="mb-2 flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${count > 0 ? "bg-amber-600 text-white" : "bg-zinc-800 text-zinc-500"}`}>
-              {count}
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-bold ${count > 0 ? "bg-amber-600 text-white" : "bg-zinc-800 text-zinc-500"}`}
+              title={`Выбрано ${count} из ${maxPerSide}`}
+            >
+              {count}/{maxPerSide}
             </span>
             <span className="text-sm font-semibold text-zinc-200">{label}</span>
           </div>
           <p className="mt-0.5 text-[11px] text-zinc-600">{sublabel}</p>
         </div>
-        {total > 0 && <span className="text-sm font-bold text-amber-400">{fmtPrice(total)}</span>}
+        {total > 0 && <span className="shrink-0 text-sm font-bold text-amber-400">{fmtPrice(total)}</span>}
       </div>
-      <div className="flex min-h-[52px] items-center gap-1.5 overflow-x-auto">
+      <div className="max-h-[min(240px,38vh)] overflow-y-auto overflow-x-hidden overscroll-y-contain pr-0.5 [scrollbar-gutter:stable]">
         {items.length === 0 ? (
-          <p className="text-[11px] text-zinc-600">{isRight ? "Предметы не выбраны" : "Выберите предметы для обмена"}</p>
+          <p className="py-2 text-[11px] text-zinc-600">{isRight ? "Предметы не выбраны" : "Выберите предметы для обмена"}</p>
         ) : (
-          items.map((item) => (
-            <div key={item.assetId} className="group relative flex-shrink-0" title={item.name}>
-              <div className="relative h-12 w-12 overflow-hidden rounded-lg border border-zinc-700/50 bg-zinc-800/50 p-0.5">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={item.iconUrl} alt="" className="h-full w-full object-contain" />
-                <button onClick={() => onRemove(item.assetId)} className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-600 text-[8px] font-bold text-white opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+          <div className="flex flex-wrap gap-2 py-0.5">
+            {items.map((item) => (
+              <div key={item.assetId} className="group relative" title={item.name}>
+                <div className="relative h-12 w-12 overflow-hidden rounded-lg border border-zinc-700/50 bg-zinc-800/50 p-0.5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={item.iconUrl} alt="" className="h-full w-full object-contain" />
+                  <button
+                    type="button"
+                    onClick={() => onRemove(item.assetId)}
+                    className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-600 text-[8px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -574,13 +714,21 @@ function SelectedStrip({
 // Requirement line
 // ---------------------------------------------------------------------------
 
-function ReqLine({ done, text }: { done: boolean; text: string }) {
+function ReqLine({ done, text, issue }: { done: boolean; text: string; issue?: boolean }) {
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[9px] ${done ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-500"}`}>
-        {done ? "✓" : "+"}
+    <div className="flex items-start gap-2 text-xs">
+      <span
+        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
+          done
+            ? "bg-emerald-600 text-white"
+            : issue
+              ? "border border-red-800/50 bg-red-950/40 text-red-400"
+              : "bg-zinc-800 text-zinc-500"
+        }`}
+      >
+        {done ? "✓" : issue ? "−" : "+"}
       </span>
-      <span className={done ? "text-zinc-400 line-through" : "text-zinc-400"}>{text}</span>
+      <span className={done ? "text-zinc-400 line-through" : issue ? "text-red-300/90" : "text-zinc-400"}>{text}</span>
     </div>
   );
 }
@@ -591,14 +739,13 @@ function ReqLine({ done, text }: { done: boolean; text: string }) {
 
 function PanelHeader({
   search, onSearch, sort, onSort, prefix,
-  onRefresh, refreshing, cooldown, tradeUrlAction, totalValue,
+  onRefresh, refreshing, cooldown, tradeUrlAction,
 }: {
   search: string; onSearch: (v: string) => void;
   sort: string; onSort: (v: string) => void;
   prefix: string;
   onRefresh: () => void; refreshing: boolean; cooldown: number;
   tradeUrlAction?: () => void;
-  totalValue?: number;
 }) {
   return (
     <div className="border-b border-zinc-800/50 bg-[#0f0f11] px-3 py-2.5">
@@ -613,9 +760,6 @@ function PanelHeader({
             onChange={(e) => onSearch(e.target.value)}
           />
         </div>
-        {totalValue !== undefined && totalValue > 0 && (
-          <span className="whitespace-nowrap text-xs font-semibold text-amber-400">{fmtPrice(totalValue)}</span>
-        )}
         <select
           aria-label={`${prefix}-sort`}
           className="rounded-lg border border-zinc-800/60 bg-zinc-900/60 px-2 py-1.5 text-[11px] text-zinc-400 focus:outline-none"
@@ -660,8 +804,9 @@ function PanelHeader({
 // Item Grid
 // ---------------------------------------------------------------------------
 
-function ItemGrid({ items, side, selected, onToggle }: {
+function ItemGrid({ items, side, selected, onToggle, showAssetId }: {
   items: InventoryItem[]; side: "owner" | "guest"; selected: Set<string>; onToggle: (id: string) => void;
+  showAssetId?: boolean;
 }) {
   if (items.length === 0) {
     return <div className="flex h-40 items-center justify-center text-sm text-zinc-600">Нет предметов</div>;
@@ -669,7 +814,13 @@ function ItemGrid({ items, side, selected, onToggle }: {
   return (
     <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       {items.map((item) => (
-        <ItemCard key={`${side}-${item.assetId}`} item={item} isSelected={selected.has(item.assetId)} onToggle={() => onToggle(item.assetId)} />
+        <ItemCard
+          key={`${side}-${item.assetId}`}
+          item={item}
+          isSelected={selected.has(item.assetId)}
+          onToggle={() => onToggle(item.assetId)}
+          showAssetId={!!showAssetId && side === "owner"}
+        />
       ))}
     </div>
   );
@@ -691,7 +842,29 @@ function RarityBar({ color }: { color: string }) {
   return <div ref={ref} className={`absolute inset-x-0 bottom-0 h-[2px] ${styles.rarityBar}`} />;
 }
 
-function ItemCard({ item, isSelected, onToggle }: { item: InventoryItem; isSelected: boolean; onToggle: () => void }) {
+function InspectInGameButton({ href }: { href: string }) {
+  return (
+    <a
+      href={href}
+      title="Осмотреть в CS2"
+      aria-label="Осмотреть в CS2"
+      className="absolute bottom-1 right-1 z-[25] flex h-7 w-8 items-center justify-center rounded-full border border-red-950/60 bg-[#2a1518]/95 text-zinc-200 shadow-md backdrop-blur-[2px] transition-colors hover:border-amber-900/40 hover:bg-[#331a1d] hover:text-white"
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <circle cx="10" cy="10" r="6" stroke="currentColor" strokeWidth="1.75" />
+        <path d="M14.2 14.2L20 20" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+        <path d="M10 7.25v5.5M7.25 10h5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    </a>
+  );
+}
+
+function ItemCard({ item, isSelected, onToggle, showAssetId }: {
+  item: InventoryItem; isSelected: boolean; onToggle: () => void; showAssetId?: boolean;
+}) {
+  const [assetCopied, setAssetCopied] = useState(false);
   const hasTimedLock = !!item.tradeLockUntil && new Date(item.tradeLockUntil) > new Date();
   const isLocked = !item.tradable || hasTimedLock;
   const isUnavailable = item.belowThreshold && item.priceSource !== "manual";
@@ -724,6 +897,33 @@ function ItemCard({ item, isSelected, onToggle }: { item: InventoryItem; isSelec
             {item.wear}
           </span>
         )}
+        {showAssetId ? (
+          <div
+            className="flex w-full max-w-full items-center gap-1 px-0.5"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <span className="min-w-0 flex-1 truncate text-center font-mono text-[8px] leading-tight text-amber-600/90" title={item.assetId}>
+              {item.assetId}
+            </span>
+            <button
+              type="button"
+              className="shrink-0 rounded border border-amber-800/40 bg-zinc-900/90 px-1 py-0.5 text-[8px] font-medium text-amber-500/90 hover:bg-zinc-800"
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  await navigator.clipboard.writeText(item.assetId);
+                  setAssetCopied(true);
+                  window.setTimeout(() => setAssetCopied(false), 1200);
+                } catch {
+                  /* ignore */
+                }
+              }}
+            >
+              {assetCopied ? "✓" : "Копир."}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {/* Image area — grows so footer aligns across the row */}
@@ -748,6 +948,8 @@ function ItemCard({ item, isSelected, onToggle }: { item: InventoryItem; isSelec
             🔒 {hasTimedLock ? fmtLock(item.tradeLockUntil!) : "Locked"}
           </div>
         )}
+
+        {item.inspectLink ? <InspectInGameButton href={item.inspectLink} /> : null}
 
         {item.stickers.length > 0 && (
           <div className="group/stickers absolute bottom-1 left-1 z-20 max-w-[calc(100%-4px)]">

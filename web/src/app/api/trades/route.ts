@@ -12,6 +12,7 @@ import { resolvePrice } from "@/lib/pricempire";
 import { fetchOwnerInventory, fetchGuestInventory } from "@/lib/steam-inventory";
 import type { NormalizedItem } from "@/lib/steam-inventory";
 import { prisma } from "@/lib/prisma";
+import { checkTradeBalance, MAX_TRADE_ITEMS_PER_SIDE } from "@/lib/trade-balance";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,19 @@ export async function POST(request: NextRequest) {
   if (ownerAssetIds.length === 0) {
     return NextResponse.json(
       { error: "no_owner_items", message: "Выберите предметы, которые вы хотите получить" },
+      { status: 400 },
+    );
+  }
+
+  if (
+    guestAssetIds.length > MAX_TRADE_ITEMS_PER_SIDE ||
+    ownerAssetIds.length > MAX_TRADE_ITEMS_PER_SIDE
+  ) {
+    return NextResponse.json(
+      {
+        error: "too_many_items",
+        message: `Не более ${MAX_TRADE_ITEMS_PER_SIDE} предметов с каждой стороны за одну заявку`,
+      },
       { status: 400 },
     );
   }
@@ -170,6 +184,16 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const guestTotalCents = tradeItems.filter((i) => i.side === "guest").reduce((s, i) => s + i.priceUsd, 0);
+  const ownerTotalCents = tradeItems.filter((i) => i.side === "owner").reduce((s, i) => s + i.priceUsd, 0);
+  const balance = checkTradeBalance(guestTotalCents, ownerTotalCents);
+  if (!balance.ok) {
+    const payload: Record<string, unknown> = { error: balance.reason, message: balance.message };
+    if (balance.reason === "overpay_too_high") payload.excessCents = balance.excessCents;
+    if (balance.reason === "overpay_too_low") payload.shortfallCents = balance.shortfallCents;
+    return NextResponse.json(payload, { status: 400 });
+  }
+
   // Create trade in DB
   const trade = await prisma.trade.create({
     data: {
@@ -198,7 +222,7 @@ export async function POST(request: NextRequest) {
     ok: true,
     tradeId: trade.id,
     ownerTradeUrl,
-    guestTotal: tradeItems.filter((i) => i.side === "guest").reduce((s, i) => s + i.priceUsd, 0),
-    ownerTotal: tradeItems.filter((i) => i.side === "owner").reduce((s, i) => s + i.priceUsd, 0),
+    guestTotal: guestTotalCents,
+    ownerTotal: ownerTotalCents,
   });
 }
