@@ -303,7 +303,7 @@ export function normalizeInventory(raw: any, ownerSteamId?: string): NormalizedI
 
     const itemName: string = desc.market_hash_name ?? desc.name ?? "";
 
-    const { floatValue: apFloat, paintIndex } = extractFromAssetProperties(desc.asset_properties);
+    const { floatValue: apFloat, paintIndex } = extractFromAssetProperties(a.asset_properties);
     const apPhase = phaseFromPaintIndex(paintIndex, itemName);
     const phase = apPhase ?? detectPhaseFromTagsDescs(desc.descriptions, desc.tags);
     const floatVal = apFloat ?? extractFloat(desc.descriptions);
