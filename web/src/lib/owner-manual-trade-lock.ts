@@ -25,9 +25,11 @@ const EMPTY_RULE: OwnerManualTradeLockRule = {
 };
 
 export function itemMatchesOwnerManualLock(item: NormalizedItem, rule: OwnerManualTradeLockRule): boolean {
-  if (rule.assetIds.has(item.assetId)) return true;
+  // Steam JSON often has numeric assetid/classid/instanceid; DB stores strings — Set.has is strict.
+  const aid = String(item.assetId);
+  if (rule.assetIds.has(aid)) return true;
   if (rule.classInstanceKeys.size === 0) return false;
-  const key = `${item.classId}_${item.instanceId}`;
+  const key = `${String(item.classId)}_${String(item.instanceId)}`;
   return rule.classInstanceKeys.has(key);
 }
 

@@ -456,7 +456,7 @@ export function normalizeInventory(raw: any, ownerSteamId?: string): NormalizedI
 
     const itemName: string = desc.market_hash_name ?? desc.name ?? "";
 
-    const assetId = a.assetid ?? a.id;
+    const assetId = String(a.assetid ?? a.id ?? "");
     const propsForAsset = assetPropsMap.get(String(assetId));
     const { floatValue: apFloat, paintIndex, stringProps } = extractFromAssetProperties(propsForAsset);
     const apPhase = phaseFromPaintIndex(paintIndex, itemName);
@@ -474,8 +474,8 @@ export function normalizeInventory(raw: any, ownerSteamId?: string): NormalizedI
 
     items.push({
       assetId,
-      classId: a.classid,
-      instanceId: a.instanceid,
+      classId: a.classid != null && a.classid !== "" ? String(a.classid) : "",
+      instanceId: a.instanceid != null && a.instanceid !== "" ? String(a.instanceid) : "",
       marketHashName: desc.market_hash_name ?? desc.name ?? "",
       name: desc.name ?? "",
       iconUrl: icon,
