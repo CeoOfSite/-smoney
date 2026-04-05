@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { OWNER_REFRESH_COOLDOWN_MS, USER_REFRESH_COOLDOWN_MS } from "@/lib/inventory-refresh-limits";
@@ -794,7 +795,9 @@ export default function TradePageClient({
           >
             <span className="shrink-0 cursor-default hover:text-zinc-400">{t("footerTos", lang)}</span>
             <span className="shrink-0 cursor-default hover:text-zinc-400">{t("footerPrivacy", lang)}</span>
-            <span className="shrink-0 cursor-default hover:text-zinc-400">{t("footerCookies", lang)}</span>
+            <Link href="/cookies" className="shrink-0 text-zinc-600 hover:text-zinc-400">
+              {t("footerCookies", lang)}
+            </Link>
           </nav>
 
           <div className="min-w-0 shrink-0 text-center sm:max-w-[32%] sm:text-right">

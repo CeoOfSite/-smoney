@@ -120,6 +120,16 @@ const T: Translations = {
   footerTos: { ru: "Условия использования", en: "Terms of Service", zh: "服务条款" },
   footerPrivacy: { ru: "Политика конфиденциальности", en: "Privacy Policy", zh: "隐私政策" },
   footerCookies: { ru: "Политика cookies", en: "Cookie Policy", zh: "Cookie政策" },
+
+  cookieBannerAria: { ru: "Уведомление о cookie", en: "Cookie notice", zh: "Cookie 提示" },
+  cookieBannerText: {
+    ru: "Мы используем необходимые cookie (сессия после входа Steam) и локальное хранилище браузера для языка и валюты. Это нужно для работы сайта. Подробнее — на странице политики.",
+    en: "We use essential cookies (session after Steam sign-in) and browser local storage for language and currency. This is required for the site to work. See our policy page for details.",
+    zh: "我们使用必要的 Cookie（Steam 登录后的会话）和浏览器本地存储来保存语言与货币设置，以便网站正常运行。详情请见政策页面。",
+  },
+  cookieBannerAccept: { ru: "Принять", en: "Accept", zh: "接受" },
+  cookieBannerMore: { ru: "Политика cookies", en: "Cookie policy", zh: "Cookie 政策" },
+
   footerValve: {
     ru: "Не связано с Valve Corp. Counter‑Strike 2 — торговая марка Valve Corporation.",
     en: "Not affiliated with Valve Corp. Counter‑Strike 2 is a trademark of Valve Corporation.",
