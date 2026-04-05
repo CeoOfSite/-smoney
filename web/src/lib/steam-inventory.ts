@@ -91,15 +91,23 @@ const PAINT_INDEX_PHASE: Record<number, string> = {
   855: "Phase 4",
 };
 
+interface AssetPropertyExtract {
+  floatValue: number | null;
+  paintIndex: number | null;
+  /** Map of propertyid → string_value (e.g. pid 6 = Item Certificate hex). */
+  stringProps: Map<number, string>;
+}
+
 function extractFromAssetProperties(
   assetProperties: Array<Record<string, unknown>> | undefined,
-): { floatValue: number | null; paintIndex: number | null } {
+): AssetPropertyExtract {
   if (!assetProperties || !Array.isArray(assetProperties)) {
-    return { floatValue: null, paintIndex: null };
+    return { floatValue: null, paintIndex: null, stringProps: new Map() };
   }
 
   let floatValue: number | null = null;
   let paintIndex: number | null = null;
+  const stringProps = new Map<number, string>();
 
   for (const prop of assetProperties) {
     const pid = Number(prop.propertyid);
@@ -111,9 +119,49 @@ function extractFromAssetProperties(
       const parsed = parseInt(String(prop.int_value), 10);
       if (!isNaN(parsed)) paintIndex = parsed;
     }
+    if (typeof prop.string_value === "string" && prop.string_value) {
+      stringProps.set(pid, prop.string_value);
+    }
   }
 
-  return { floatValue, paintIndex };
+  return { floatValue, paintIndex, stringProps };
+}
+
+const INSPECT_PREFIX = "steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20";
+
+/**
+ * Build the inspect link for a CS2 item.
+ *
+ * Steam's new inventory format stores the full protobuf-encoded «Item Certificate»
+ * in asset_properties propertyid 6 (string_value). This hex blob already encodes
+ * S (steamid), A (assetid), D (inspect code) internally, so using it directly as
+ *   steam://rungame/730/.../+csgo_econ_action_preview%20<hex>
+ * gives a working in-game inspect.
+ *
+ * When Item Certificate is available, we prefer it over the old template-based
+ * approach (%owner_steamid%, %assetid%, D…) which sometimes produces broken links.
+ */
+function resolveInspectLink(
+  template: string,
+  ownerSteamId: string,
+  assetId: string,
+  stringProps: Map<number, string>,
+): string {
+  const itemCert = stringProps.get(6);
+  if (itemCert) {
+    return INSPECT_PREFIX + itemCert;
+  }
+
+  let link = template
+    .replace("%owner_steamid%", ownerSteamId)
+    .replace("%assetid%", assetId);
+
+  link = link.replace(/%propid:(\d+)%/g, (_, pidStr) => {
+    const pid = parseInt(pidStr, 10);
+    return stringProps.get(pid) ?? "";
+  });
+
+  return link;
 }
 
 /** Ruby / Sapphire / Phase N etc. apply only to Doppler (incl. Gamma) knives — not to other skins' stickers or descriptions. */
@@ -410,7 +458,7 @@ export function normalizeInventory(raw: any, ownerSteamId?: string): NormalizedI
 
     const assetId = a.assetid ?? a.id;
     const propsForAsset = assetPropsMap.get(String(assetId));
-    const { floatValue: apFloat, paintIndex } = extractFromAssetProperties(propsForAsset);
+    const { floatValue: apFloat, paintIndex, stringProps } = extractFromAssetProperties(propsForAsset);
     const apPhase = phaseFromPaintIndex(paintIndex, itemName);
     const phase =
       apPhase ??
@@ -419,7 +467,7 @@ export function normalizeInventory(raw: any, ownerSteamId?: string): NormalizedI
 
     const inspectRaw = extractInspectLink(desc.actions);
     const inspectLink = inspectRaw
-      ? inspectRaw.replace("%owner_steamid%", ownerSteamId ?? "0").replace("%assetid%", assetId)
+      ? resolveInspectLink(inspectRaw, ownerSteamId ?? "0", assetId, stringProps)
       : null;
 
     const stickers = extractStickers(desc.descriptions);
@@ -642,3 +690,17 @@ export async function fetchGuestInventory(
   if (!result.ok) return result;
   return { ok: true, items: normalizeInventory(result.data, steamId64) };
 }
+
+// ---------------------------------------------------------------------------
+// Exported for testing only
+// ---------------------------------------------------------------------------
+export const _testing = {
+  isDopplerFamilySkin,
+  phaseFromPaintIndex,
+  detectPhaseFromTagsDescs,
+  extractFromAssetProperties,
+  resolveInspectLink,
+  extractStickers,
+  extractInspectLink,
+  INSPECT_PREFIX,
+};
