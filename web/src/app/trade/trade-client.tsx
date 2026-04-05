@@ -85,8 +85,28 @@ const SORT_OPTIONS = [
   { key: "float-desc", label: "Float ↓" },
 ] as const;
 
-function fmtPrice(cents: number) {
-  return `${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })} $`;
+const ITEMS_PER_PAGE = 30;
+
+const CURRENCIES = [
+  { code: "USD", symbol: "$", flag: "🇺🇸", rate: 1 },
+  { code: "EUR", symbol: "€", flag: "🇪🇺", rate: 0.92 },
+  { code: "RUB", symbol: "₽", flag: "🇷🇺", rate: 92 },
+  { code: "CNY", symbol: "¥", flag: "🇨🇳", rate: 7.25 },
+  { code: "UAH", symbol: "₴", flag: "🇺🇦", rate: 41.5 },
+] as const;
+type CurrencyCode = (typeof CURRENCIES)[number]["code"];
+
+const LANGUAGES = [
+  { code: "ru", label: "Русский", flag: "🇷🇺" },
+  { code: "en", label: "English", flag: "🇬🇧" },
+  { code: "zh", label: "中文", flag: "🇨🇳" },
+] as const;
+type LangCode = (typeof LANGUAGES)[number]["code"];
+
+function fmtPrice(cents: number, currencyCode: CurrencyCode = "USD") {
+  const cur = CURRENCIES.find((c) => c.code === currencyCode) ?? CURRENCIES[0];
+  const val = (cents / 100) * cur.rate;
+  return `${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur.symbol}`;
 }
 
 function ruRequirementsHeading(pending: number): string {
@@ -141,6 +161,25 @@ export default function TradePageClient({
   // Center filters (apply to both panels)
   const [category, setCategory] = useState("All");
   const [wear, setWear] = useState("All");
+
+  // Language & Currency
+  const [currency, setCurrency] = useState<CurrencyCode>(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("chez_currency") as CurrencyCode) || "USD";
+    }
+    return "USD";
+  });
+  const [lang, setLang] = useState<LangCode>(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("chez_lang") as LangCode) || "ru";
+    }
+    return "ru";
+  });
+
+  useEffect(() => { localStorage.setItem("chez_currency", currency); }, [currency]);
+  useEffect(() => { localStorage.setItem("chez_lang", lang); }, [lang]);
+
+  const fmt = useCallback((cents: number) => fmtPrice(cents, currency), [currency]);
 
   // ------ loaders ------
   const loadOwner = useCallback(async () => {
@@ -311,13 +350,13 @@ export default function TradePageClient({
       requirementRows.push({
         done: false,
         issue: true,
-        text: `Уменьшите переплату на ${fmtPrice(tradeBalance.excessCents)} (макс. ${TRADE_MAX_OVERPAY_PERCENT}%)`,
+        text: `Уменьшите переплату на ${fmt(tradeBalance.excessCents)} (макс. ${TRADE_MAX_OVERPAY_PERCENT}%)`,
       });
     } else if (tradeBalance.reason === "overpay_too_low") {
       requirementRows.push({
         done: false,
         issue: true,
-        text: `Добавьте предметы с вашей стороны или уберите с нашей на ${fmtPrice(tradeBalance.shortfallCents)} (переплата не ниже 0%)`,
+        text: `Добавьте предметы с вашей стороны или уберите с нашей на ${fmt(tradeBalance.shortfallCents)} (переплата не ниже 0%)`,
       });
     } else {
       requirementRows.push({ done: false, issue: true, text: tradeBalance.message });
@@ -369,13 +408,21 @@ export default function TradePageClient({
         <nav className="flex items-center gap-5 text-sm text-zinc-500">
           <span className="text-amber-500/90">Обмен CS2</span>
         </nav>
-        {!isLoggedIn ? (
-          <a href="/api/auth/steam" className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-amber-500 transition-colors">
-            Войти через Steam
-          </a>
-        ) : (
-          <a href="/api/auth/logout" className="text-xs text-zinc-500 hover:text-zinc-300">Выйти</a>
-        )}
+        <div className="flex items-center gap-3">
+          <LangCurrencyPicker
+            lang={lang}
+            onLangChange={setLang}
+            currency={currency}
+            onCurrencyChange={setCurrency}
+          />
+          {!isLoggedIn ? (
+            <a href="/api/auth/steam" className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-amber-500 transition-colors">
+              Войти через Steam
+            </a>
+          ) : (
+            <a href="/api/auth/logout" className="text-xs text-zinc-500 hover:text-zinc-300">Выйти</a>
+          )}
+        </div>
       </header>
 
       {authError ? (
@@ -420,6 +467,7 @@ export default function TradePageClient({
             onRemove={(id) => toggle(setSelectedMy, id)}
             count={selectedMy.size}
             maxPerSide={MAX_TRADE_ITEMS_PER_SIDE}
+            fmt={fmt}
           />
 
           {/* Content — each branch gets flex-1 + overflow-y-auto so it always fills the column */}
@@ -481,7 +529,7 @@ export default function TradePageClient({
                 tradeUrlAction={() => setEditingTradeUrl(true)}
               />
               <div className="flex-1 overflow-y-auto p-2">
-                <ItemGrid items={filterMy(myItems, mySearch, mySort)} side="guest" selected={selectedMy} onToggle={(id) => toggle(setSelectedMy, id)} />
+                <ItemGrid items={filterMy(myItems, mySearch, mySort)} side="guest" selected={selectedMy} onToggle={(id) => toggle(setSelectedMy, id)} fmt={fmt} />
               </div>
             </div>
           )}
@@ -494,11 +542,11 @@ export default function TradePageClient({
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/50 p-3 text-center">
                 <div className="mb-0.5 text-[10px] text-zinc-500">Вы отдаёте</div>
-                <p className="text-sm font-bold text-zinc-100">{fmtPrice(myTotal)}</p>
+                <p className="text-sm font-bold text-zinc-100">{fmt(myTotal)}</p>
               </div>
               <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/50 p-3 text-center">
                 <div className="mb-0.5 text-[10px] text-zinc-500">Вы получаете</div>
-                <p className="text-sm font-bold text-zinc-100">{fmtPrice(ownerTotal)}</p>
+                <p className="text-sm font-bold text-zinc-100">{fmt(ownerTotal)}</p>
               </div>
             </div>
 
@@ -648,6 +696,7 @@ export default function TradePageClient({
             count={selectedOwner.size}
             maxPerSide={MAX_TRADE_ITEMS_PER_SIDE}
             isRight
+            fmt={fmt}
           />
 
           <PanelHeader
@@ -664,6 +713,7 @@ export default function TradePageClient({
                   selected={selectedOwner}
                   onToggle={(id) => toggle(setSelectedOwner, id)}
                   showAssetId={isAdmin}
+                  fmt={fmt}
                 />
           </div>
         </div>
@@ -677,10 +727,11 @@ export default function TradePageClient({
 // ---------------------------------------------------------------------------
 
 function SelectedStrip({
-  label, sublabel, items, total, onRemove, count, maxPerSide, isRight,
+  label, sublabel, items, total, onRemove, count, maxPerSide, isRight, fmt: fmtFn,
 }: {
   label: string; sublabel: string; items: InventoryItem[]; total: number;
   onRemove: (id: string) => void; count: number; maxPerSide: number; isRight?: boolean;
+  fmt: (cents: number) => string;
 }) {
   return (
     <div className="border-b border-zinc-800/50 bg-[#111113] px-4 py-3">
@@ -697,7 +748,7 @@ function SelectedStrip({
           </div>
           <p className="mt-0.5 text-[11px] text-zinc-600">{sublabel}</p>
         </div>
-        {total > 0 && <span className="shrink-0 text-sm font-bold text-amber-400">{fmtPrice(total)}</span>}
+        {total > 0 && <span className="shrink-0 text-sm font-bold text-amber-400">{fmtFn(total)}</span>}
       </div>
       <div className="max-h-[min(240px,38vh)] overflow-y-auto overflow-x-hidden overscroll-y-contain pr-0.5 [scrollbar-gutter:stable]">
         {items.length === 0 ? (
@@ -718,6 +769,98 @@ function SelectedStrip({
                   </button>
                 </div>
               </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Language & Currency Picker
+// ---------------------------------------------------------------------------
+
+function LangCurrencyPicker({
+  lang, onLangChange, currency, onCurrencyChange,
+}: {
+  lang: LangCode; onLangChange: (v: LangCode) => void;
+  currency: CurrencyCode; onCurrencyChange: (v: CurrencyCode) => void;
+}) {
+  const [langOpen, setLangOpen] = useState(false);
+  const [curOpen, setCurOpen] = useState(false);
+  const langRef = useRef<HTMLDivElement>(null);
+  const curRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (langRef.current && !langRef.current.contains(e.target as Node)) setLangOpen(false);
+      if (curRef.current && !curRef.current.contains(e.target as Node)) setCurOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const curLang = LANGUAGES.find((l) => l.code === lang) ?? LANGUAGES[0];
+  const curCur = CURRENCIES.find((c) => c.code === currency) ?? CURRENCIES[0];
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {/* Language */}
+      <div className="relative" ref={langRef}>
+        <button
+          type="button"
+          onClick={() => { setLangOpen((v) => !v); setCurOpen(false); }}
+          className="flex items-center gap-1 rounded-lg border border-zinc-800/60 bg-zinc-900/60 px-2 py-1 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 transition-colors"
+        >
+          <span className="text-sm">{curLang.flag}</span>
+          <svg className="h-3 w-3 text-zinc-600" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" /></svg>
+        </button>
+        {langOpen && (
+          <div className="absolute right-0 top-full z-50 mt-1 min-w-[130px] rounded-lg border border-zinc-700/60 bg-zinc-900 py-1 shadow-xl">
+            {LANGUAGES.map((l) => (
+              <button
+                key={l.code}
+                type="button"
+                onClick={() => { onLangChange(l.code); setLangOpen(false); }}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
+                  lang === l.code ? "bg-amber-600/15 text-amber-400" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                }`}
+              >
+                <span className="text-sm">{l.flag}</span>
+                {l.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Currency */}
+      <div className="relative" ref={curRef}>
+        <button
+          type="button"
+          onClick={() => { setCurOpen((v) => !v); setLangOpen(false); }}
+          className="flex items-center gap-1 rounded-lg border border-zinc-800/60 bg-zinc-900/60 px-2 py-1 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 transition-colors"
+        >
+          <span className="text-[11px] font-medium">{curCur.symbol}</span>
+          <span className="text-[11px]">{curCur.code}</span>
+          <svg className="h-3 w-3 text-zinc-600" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" /></svg>
+        </button>
+        {curOpen && (
+          <div className="absolute right-0 top-full z-50 mt-1 min-w-[130px] rounded-lg border border-zinc-700/60 bg-zinc-900 py-1 shadow-xl">
+            {CURRENCIES.map((c) => (
+              <button
+                key={c.code}
+                type="button"
+                onClick={() => { onCurrencyChange(c.code); setCurOpen(false); }}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
+                  currency === c.code ? "bg-amber-600/15 text-amber-400" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                }`}
+              >
+                <span className="text-sm">{c.flag}</span>
+                <span className="font-medium">{c.symbol}</span>
+                {c.code}
+              </button>
             ))}
           </div>
         )}
@@ -820,25 +963,64 @@ function PanelHeader({
 // Item Grid
 // ---------------------------------------------------------------------------
 
-function ItemGrid({ items, side, selected, onToggle, showAssetId }: {
+function ItemGrid({ items, side, selected, onToggle, showAssetId, fmt: fmtFn }: {
   items: InventoryItem[]; side: "owner" | "guest"; selected: Set<string>; onToggle: (id: string) => void;
-  showAssetId?: boolean;
+  showAssetId?: boolean; fmt: (cents: number) => string;
 }) {
+  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setVisibleCount(ITEMS_PER_PAGE);
+  }, [items.length, side]);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + ITEMS_PER_PAGE, items.length));
+        }
+      },
+      { rootMargin: "300px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [items.length]);
+
   if (items.length === 0) {
     return <div className="flex h-40 items-center justify-center text-sm text-zinc-600">Нет предметов</div>;
   }
+
+  const visible = items.slice(0, visibleCount);
+  const hasMore = visibleCount < items.length;
+
   return (
-    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-      {items.map((item) => (
-        <ItemCard
-          key={`${side}-${item.assetId}`}
-          item={item}
-          isSelected={selected.has(item.assetId)}
-          onToggle={() => onToggle(item.assetId)}
-          showAssetId={!!showAssetId && side === "owner"}
-        />
-      ))}
-    </div>
+    <>
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {visible.map((item) => (
+          <ItemCard
+            key={`${side}-${item.assetId}`}
+            item={item}
+            isSelected={selected.has(item.assetId)}
+            onToggle={() => onToggle(item.assetId)}
+            showAssetId={!!showAssetId && side === "owner"}
+            fmt={fmtFn}
+          />
+        ))}
+      </div>
+      {hasMore && (
+        <div ref={sentinelRef} className="flex items-center justify-center py-6 text-xs text-zinc-600">
+          Загрузка... ({visible.length} из {items.length})
+        </div>
+      )}
+      {!hasMore && items.length > ITEMS_PER_PAGE && (
+        <div className="py-4 text-center text-[11px] text-zinc-600">
+          Все предметы загружены ({items.length})
+        </div>
+      )}
+    </>
   );
 }
 
@@ -877,8 +1059,9 @@ function InspectInGameButton({ href }: { href: string }) {
   );
 }
 
-function ItemCard({ item, isSelected, onToggle, showAssetId }: {
+function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn }: {
   item: InventoryItem; isSelected: boolean; onToggle: () => void; showAssetId?: boolean;
+  fmt: (cents: number) => string;
 }) {
   const [assetCopied, setAssetCopied] = useState(false);
   const hasTimedLock = !!item.tradeLockUntil && new Date(item.tradeLockUntil) > new Date();
@@ -1030,7 +1213,7 @@ function ItemCard({ item, isSelected, onToggle, showAssetId }: {
           {item.priceSource === "unavailable" || isUnavailable ? (
             <span className="text-[10px] text-zinc-600">—</span>
           ) : (
-            <span className="text-[13px] font-bold leading-none text-amber-400">{fmtPrice(item.priceUsd)}</span>
+            <span className="text-[13px] font-bold leading-none text-amber-400">{fmtFn(item.priceUsd)}</span>
           )}
           {item.priceSource === "manual" && <span className="text-[8px] text-amber-700">manual</span>}
         </div>
