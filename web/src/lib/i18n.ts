@@ -46,6 +46,11 @@ const T: Translations = {
     en: "Prices may vary due to wear, pattern, or stickers.",
     zh: "价格可能因磨损、花纹或贴纸而有所不同。",
   },
+  centerPanelFiller: {
+    ru: "Подсказка: фильтры по типу и износу ниже влияют на список магазина. Переплата считается по выбранным предметам с ценой; без оценки в сумму не входят. Перед отправкой проверьте trade-ссылку Steam и лимит предметов в одном обмене.",
+    en: "Tip: type and wear filters below affect the store list. Overpay uses priced selected items only; unpriced items are excluded. Before submitting, verify your Steam trade URL and the per-offer item limit.",
+    zh: "提示：下方的类型与磨损筛选会影响商店列表。超付仅按已标价且已选物品计算；无标价物品不计入合计。提交前请确认 Steam 交易链接与单次报价物品上限。",
+  },
 
   itemType: { ru: "Тип предмета", en: "Item type", zh: "物品类型" },
   wearLabel: { ru: "Износ", en: "Wear", zh: "磨损" },

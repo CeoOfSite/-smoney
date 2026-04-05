@@ -461,8 +461,8 @@ export default function TradePageClient({
       )}
       {tradeSuccess && <div className="bg-emerald-900/30 border-b border-emerald-800/40 px-5 py-2 text-sm text-emerald-400">{tradeSuccess}</div>}
 
-      {/* 3-Column Layout — minmax(0,…) so columns shrink inside viewport (no horizontal clip at 100% zoom) */}
-      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,38%)_minmax(0,24%)_minmax(0,38%)] items-stretch overflow-hidden">
+      {/* 3-Column Layout — 1fr row fills flex-1 height (auto row was content-sized; center column stayed short) */}
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,38%)_minmax(0,24%)_minmax(0,38%)] grid-rows-[minmax(0,1fr)] items-stretch overflow-hidden">
         {/* ─── LEFT: Your Inventory ─── */}
         <div className="flex min-h-0 min-w-0 flex-col border-r border-zinc-800/50">
           {/* Selected items strip */}
@@ -544,9 +544,9 @@ export default function TradePageClient({
           )}
         </div>
 
-        {/* ─── CENTER: stretches full height to footer ─── */}
-        <div className="@container flex min-w-0 flex-col bg-[#111113]">
-          <div className="flex flex-1 flex-col gap-2 px-2 py-2 sm:gap-2.5 sm:px-2.5 sm:py-2.5">
+        {/* ─── CENTER: h-full so inner flex-1 consumes full grid cell (same height as side columns) ─── */}
+        <div className="@container flex h-full min-h-0 min-w-0 flex-col bg-[#111113]">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 px-2 py-2 sm:gap-2.5 sm:px-2.5 sm:py-2.5">
             {/* Trade analysis */}
             <div className="grid min-w-0 grid-cols-2 gap-1.5">
               <div className="min-w-0 rounded-lg border border-zinc-800/60 bg-zinc-900/50 p-2 text-center">
@@ -697,8 +697,10 @@ export default function TradePageClient({
               </div>
             </div>
 
-            {/* Fills remaining space down to footer */}
-            <div className="flex-1" aria-hidden />
+            {/* Fills remaining grid-cell height; panel + disclaimer so the strip isn’t an empty void */}
+            <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-zinc-800/40 bg-zinc-900/25 px-2 py-2 sm:px-2.5 sm:py-2.5">
+              <p className="text-balance text-[9px] leading-relaxed text-zinc-600 sm:text-[10px]">{t("centerPanelFiller", lang)}</p>
+            </div>
           </div>
         </div>
 
