@@ -107,9 +107,10 @@ model FxRatesSnapshot {
   fetchedAt DateTime
 }
 
-// Owner store: manual trade-lock overlay by assetId (paste Steam JSON in admin). Row present → DB wins; no row → file/env fallback.
+// Owner store: manual trade-lock overlay (paste Steam JSON in admin). Match by assetId and/or classid_instanceid (context-safe).
 model OwnerManualTradeLockList {
-  id        String   @id @default("singleton")
-  assetIds  String[] @default([])
-  updatedAt DateTime @updatedAt
+  id                 String   @id @default("singleton")
+  assetIds           String[] @default([])
+  classInstanceKeys  String[] @default([]) // "classid_instanceid" from pasted assets[]
+  updatedAt          DateTime @updatedAt
 }

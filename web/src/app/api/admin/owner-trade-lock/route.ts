@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
 import {
-  extractManualTradeLockAssetIds,
+  extractManualTradeLockEntries,
   resolveOwnerManualTradeLockFilePath,
 } from "@/lib/owner-manual-trade-lock";
 import { prisma } from "@/lib/prisma";
@@ -33,9 +33,13 @@ export async function GET() {
 
   return NextResponse.json({
     loadedFromDb: !!row,
+    assetIdCount: row?.assetIds.length ?? 0,
+    classInstanceKeyCount: row?.classInstanceKeys.length ?? 0,
+    /** @deprecated use assetIdCount */
     count: row?.assetIds.length ?? 0,
     updatedAt: row?.updatedAt.toISOString() ?? null,
-    sampleIds: row ? row.assetIds.slice(0, 15) : [],
+    sampleAssetIds: row ? row.assetIds.slice(0, 12) : [],
+    sampleClassInstanceKeys: row ? row.classInstanceKeys.slice(0, 12) : [],
     fileFallbackPath: resolveOwnerManualTradeLockFilePath(),
   });
 }
@@ -52,7 +56,8 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  let ids: string[] = [];
+  let assetIds: string[] = [];
+  let classInstanceKeys: string[] = [];
 
   if (typeof body.jsonText === "string") {
     const text = body.jsonText;
@@ -61,12 +66,14 @@ export async function PUT(request: NextRequest) {
     }
     try {
       const parsed = JSON.parse(text) as unknown;
-      ids = extractManualTradeLockAssetIds(parsed);
+      const ex = extractManualTradeLockEntries(parsed);
+      assetIds = ex.assetIds;
+      classInstanceKeys = ex.classInstanceKeys;
     } catch {
       return NextResponse.json({ error: "invalid_json_text" }, { status: 400 });
     }
   } else if (Array.isArray(body.assetIds)) {
-    ids = body.assetIds.filter((x): x is string => typeof x === "string" && x.length > 0);
+    assetIds = body.assetIds.filter((x): x is string => typeof x === "string" && x.length > 0);
   } else {
     return NextResponse.json(
       { error: "expected_jsonText_or_assetIds", message: "Передайте jsonText (строка JSON) или assetIds (массив строк)" },
@@ -74,18 +81,22 @@ export async function PUT(request: NextRequest) {
     );
   }
 
-  const unique = [...new Set(ids)];
+  const uniqueAssetIds = [...new Set(assetIds)];
+  const uniqueCi = [...new Set(classInstanceKeys)];
 
   const row = await prisma.ownerManualTradeLockList.upsert({
     where: { id: "singleton" },
-    create: { id: "singleton", assetIds: unique },
-    update: { assetIds: unique },
+    create: { id: "singleton", assetIds: uniqueAssetIds, classInstanceKeys: uniqueCi },
+    update: { assetIds: uniqueAssetIds, classInstanceKeys: uniqueCi },
   });
 
   return NextResponse.json({
     ok: true,
+    assetIdCount: row.assetIds.length,
+    classInstanceKeyCount: row.classInstanceKeys.length,
     count: row.assetIds.length,
     updatedAt: row.updatedAt.toISOString(),
+    message: `Сохранено: ${row.assetIds.length} asset id, ${row.classInstanceKeys.length} пар classid+instanceid`,
   });
 }
 

@@ -4,9 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 
 interface LockMeta {
   loadedFromDb: boolean;
-  count: number;
+  assetIdCount: number;
+  classInstanceKeyCount: number;
+  count?: number;
   updatedAt: string | null;
-  sampleIds: string[];
+  sampleAssetIds: string[];
+  sampleClassInstanceKeys: string[];
   fileFallbackPath: string | null;
 }
 
@@ -23,8 +26,22 @@ export default function AdminLockedSkinsPage() {
     setErr("");
     const res = await fetch("/api/admin/owner-trade-lock");
     if (res.ok) {
-      const data = (await res.json()) as LockMeta;
-      setMeta(data);
+      const data = (await res.json()) as Record<string, unknown>;
+      setMeta({
+        loadedFromDb: !!data.loadedFromDb,
+        assetIdCount: Number(data.assetIdCount ?? data.count ?? 0),
+        classInstanceKeyCount: Number(data.classInstanceKeyCount ?? 0),
+        updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : null,
+        sampleAssetIds: Array.isArray(data.sampleAssetIds)
+          ? (data.sampleAssetIds as string[])
+          : Array.isArray(data.sampleIds)
+            ? (data.sampleIds as string[])
+            : [],
+        sampleClassInstanceKeys: Array.isArray(data.sampleClassInstanceKeys)
+          ? (data.sampleClassInstanceKeys as string[])
+          : [],
+        fileFallbackPath: typeof data.fileFallbackPath === "string" ? data.fileFallbackPath : null,
+      });
     } else {
       setErr("Не удалось загрузить статус");
     }
@@ -50,7 +67,11 @@ export default function AdminLockedSkinsPage() {
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
-      setMsg(`Сохранено: ${data.count} уникальных asset id`);
+      setMsg(
+        typeof data.message === "string"
+          ? data.message
+          : `Сохранено: ${data.assetIdCount ?? data.count} asset id, ${data.classInstanceKeyCount ?? 0} пар classid+instanceid`,
+      );
       setJsonText("");
       load();
     } else {
@@ -92,9 +113,10 @@ export default function AdminLockedSkinsPage() {
         <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Трейдлок (ручной список)</h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           Вставьте сырой JSON из браузера (Network → ответ Steam): и отформатированный, и минифицированный подходят.
-          Логин Steam на сервере не нужен — только ваша сессия у вас в браузере. Список хранится в БД и перекрывает файл{" "}
-          <code className="rounded bg-zinc-200 px-1 text-xs dark:bg-zinc-800">data/owner-manual-trade-lock.json</code>, пока
-          запись в БД существует.
+          Логин Steam на сервере не нужен. Список действует только на инвентарь <strong className="text-zinc-800 dark:text-zinc-200">магазина</strong> (колонка «Вы получаете»), тот же Steam ID, что в <code className="rounded bg-zinc-200 px-1 text-xs dark:bg-zinc-800">OWNER_STEAM_ID</code>.
+          Если экспорт с другим <code className="text-xs">contextid</code> (например 16), чем у сайта (730/2), <code className="text-xs">assetid</code> могут не совпадать — поэтому мы дополнительно сопоставляем пары <code className="text-xs">classid + instanceid</code> из вашего <code className="text-xs">assets[]</code>.
+          После обновления сайта нажмите «Сохранить в БД» ещё раз с тем же JSON. Список в БД перекрывает файл{" "}
+          <code className="rounded bg-zinc-200 px-1 text-xs dark:bg-zinc-800">data/owner-manual-trade-lock.json</code>.
         </p>
       </div>
 
@@ -111,15 +133,25 @@ export default function AdminLockedSkinsPage() {
             )}
           </p>
           <p className="mt-1">
-            <span className="font-medium text-zinc-800 dark:text-zinc-200">Заблокировано (asset id):</span> {meta.count}
+            <span className="font-medium text-zinc-800 dark:text-zinc-200">По asset id:</span> {meta.assetIdCount}
+          </p>
+          <p className="mt-1">
+            <span className="font-medium text-zinc-800 dark:text-zinc-200">По classid+instanceid:</span>{" "}
+            {meta.classInstanceKeyCount}
           </p>
           {meta.updatedAt ? (
             <p className="mt-1 text-zinc-500">Обновлено: {new Date(meta.updatedAt).toLocaleString()}</p>
           ) : null}
-          {meta.sampleIds.length > 0 ? (
+          {meta.sampleAssetIds.length > 0 ? (
             <p className="mt-2 break-all font-mono text-xs text-zinc-600 dark:text-zinc-400">
-              Примеры: {meta.sampleIds.join(", ")}
-              {meta.count > meta.sampleIds.length ? " …" : ""}
+              Примеры asset id: {meta.sampleAssetIds.join(", ")}
+              {meta.assetIdCount > meta.sampleAssetIds.length ? " …" : ""}
+            </p>
+          ) : null}
+          {meta.sampleClassInstanceKeys.length > 0 ? (
+            <p className="mt-2 break-all font-mono text-xs text-zinc-600 dark:text-zinc-400">
+              Примеры class_instance: {meta.sampleClassInstanceKeys.join(", ")}
+              {meta.classInstanceKeyCount > meta.sampleClassInstanceKeys.length ? " …" : ""}
             </p>
           ) : null}
           {meta.fileFallbackPath ? (
