@@ -851,19 +851,24 @@ function SelectedStrip({
         ) : (
           <div className="flex w-full flex-wrap content-start gap-2 py-0.5">
             {items.map((item) => (
-              <div key={item.assetId} className="group relative" title={item.name}>
-                <div className="relative h-12 w-12 overflow-hidden rounded-lg border border-zinc-700/50 bg-zinc-800/50 p-0.5">
+              <button
+                key={item.assetId}
+                type="button"
+                onClick={() => onRemove(item.assetId)}
+                title={`${item.name} — ${t("removeFromSelection", l)}`}
+                className="group relative rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111113]"
+              >
+                <div className="relative h-12 w-12 overflow-hidden rounded-lg border border-zinc-700/50 bg-zinc-800/50 p-0.5 transition-[border-color,box-shadow] group-hover:border-red-500/50 group-hover:shadow-[0_0_0_1px_rgba(239,68,68,0.25)] group-active:scale-[0.97]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={item.iconUrl} alt="" className="h-full w-full object-contain" />
-                  <button
-                    type="button"
-                    onClick={() => onRemove(item.assetId)}
-                    className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-600 text-[8px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100"
+                  <span
+                    className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold leading-none text-white shadow-sm ring-1 ring-black/40 opacity-90 transition-opacity group-hover:opacity-100"
+                    aria-hidden
                   >
                     ×
-                  </button>
+                  </span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}

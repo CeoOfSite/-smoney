@@ -128,6 +128,11 @@ const T: Translations = {
 
   selected: { ru: "Выбрано", en: "Selected", zh: "已选择" },
   of: { ru: "из", en: "of", zh: "共" },
+  removeFromSelection: {
+    ru: "Нажмите, чтобы убрать из выбора",
+    en: "Click to remove from selection",
+    zh: "点击从选择中移除",
+  },
 
   daysShort: { ru: "д", en: "d", zh: "天" },
   hoursShort: { ru: "ч", en: "h", zh: "时" },
