@@ -45,6 +45,12 @@ export default async function AdminHomePage() {
             Настройки цен
           </Link>
           <Link
+            href="/admin/locked-skins"
+            className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+          >
+            Трейдлок (JSON)
+          </Link>
+          <Link
             href="/api/prices/sync"
             className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
           >

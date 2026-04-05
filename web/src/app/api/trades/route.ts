@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
 import { getCached } from "@/lib/inventory-cache";
+import { applyOwnerManualTradeLock } from "@/lib/owner-manual-trade-lock";
 import { centsCountedInTradeTotal, resolvePrice } from "@/lib/pricempire";
 import { fetchOwnerInventory, fetchGuestInventory } from "@/lib/steam-inventory";
 import type { NormalizedItem } from "@/lib/steam-inventory";
@@ -106,6 +107,8 @@ export async function POST(request: NextRequest) {
     guestInv = res.items;
   }
 
+  ownerInv = await applyOwnerManualTradeLock(ownerInv);
+
   // Validate selected items exist in inventories
   const ownerMap = new Map(ownerInv.map((i) => [i.assetId, i]));
   const guestMap = new Map(guestInv.map((i) => [i.assetId, i]));
@@ -126,9 +129,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Check trade locks and price thresholds
+  // Check trade locks and price thresholds (incl. manual owner lock list)
   for (const id of ownerAssetIds) {
     const item = ownerMap.get(id)!;
+    if (!item.tradable) {
+      return NextResponse.json(
+        { error: "trade_locked", message: `Предмет "${item.name}" недоступен для обмена` },
+        { status: 400 },
+      );
+    }
     if (item.tradeLockUntil && new Date(item.tradeLockUntil) > new Date()) {
       return NextResponse.json(
         { error: "trade_locked", message: `Предмет "${item.name}" в трейдлоке` },

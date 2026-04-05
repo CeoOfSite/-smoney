@@ -29,6 +29,12 @@ export default async function AdminLayout({
           <Link href="/admin/pricing" className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100">
             Цены
           </Link>
+          <Link
+            href="/admin/locked-skins"
+            className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+          >
+            Трейдлок
+          </Link>
           <Link href="/" className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100">
             Трейд
           </Link>

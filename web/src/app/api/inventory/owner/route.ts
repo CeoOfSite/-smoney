@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 
 import { getCached, refreshCooldownRemainingOwner, setCache } from "@/lib/inventory-cache";
+import { applyOwnerManualTradeLock } from "@/lib/owner-manual-trade-lock";
 import { fetchOwnerInventory } from "@/lib/steam-inventory";
 import type { NormalizedItem } from "@/lib/steam-inventory";
 import { resolvePrice } from "@/lib/pricempire";
@@ -46,6 +47,8 @@ export async function GET() {
 
     setCache(ownerSteamId, items);
   }
+
+  items = await applyOwnerManualTradeLock(items);
 
   try {
     const enriched = await enrichWithPrices(items, "owner");

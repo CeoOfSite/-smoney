@@ -106,3 +106,10 @@ model FxRatesSnapshot {
   rates     Json // { "USD": 1, "EUR": 0.92, "RUB": 90, ... } — units per 1 USD
   fetchedAt DateTime
 }
+
+// Owner store: manual trade-lock overlay by assetId (paste Steam JSON in admin). Row present → DB wins; no row → file/env fallback.
+model OwnerManualTradeLockList {
+  id        String   @id @default("singleton")
+  assetIds  String[] @default([])
+  updatedAt DateTime @updatedAt
+}

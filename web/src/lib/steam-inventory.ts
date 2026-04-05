@@ -702,5 +702,6 @@ export const _testing = {
   resolveInspectLink,
   extractStickers,
   extractInspectLink,
+  detectTradeLock,
   INSPECT_PREFIX,
 };

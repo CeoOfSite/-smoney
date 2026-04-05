@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local owner trade-lock list (large JSON from Steam export)
+/data/owner-manual-trade-lock.json

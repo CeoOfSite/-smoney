@@ -7,8 +7,32 @@ const {
   detectPhaseFromTagsDescs,
   extractFromAssetProperties,
   resolveInspectLink,
+  detectTradeLock,
   INSPECT_PREFIX,
 } = _testing;
+
+/**
+ * Steam trade hold (e.g. 7-day after trade/market) — what we actually consume:
+ *
+ * - There is no separate "trade ban" boolean in the Community inventory JSON we use.
+ * - Each asset's description record has `tradable: 0 | 1`; during cooldown Steam usually sets 0.
+ * - The nested `descriptions` array on that record often includes a line like "Tradable After: …"
+ *   (locale-dependent). We parse that into `tradeLockUntil` via detectTradeLock().
+ * - If tradable is 0 but no line matches our regexes, the item is still non-tradable — we just
+ *   may not have an unlock timestamp in our model.
+ *
+ * Official ISteamEconomy / legacy Web API item endpoints are not what this app uses for CS2
+ * inventory; behavior is defined by the Community inventory response shape we normalize.
+ */
+
+/** Same rule as trade UI: locked if Steam says not tradable OR parsed lock date is in the future. */
+function isEffectivelyTradeLocked(
+  item: { tradable: boolean; tradeLockUntil: string | null },
+  now: Date,
+): boolean {
+  const hasTimedLock = !!item.tradeLockUntil && new Date(item.tradeLockUntil) > now;
+  return !item.tradable || hasTimedLock;
+}
 
 // ---------------------------------------------------------------------------
 // resolveInspectLink
@@ -270,5 +294,122 @@ describe("normalizeInventory — no false Doppler phase", () => {
     const items = normalizeInventory(raw);
     expect(items).toHaveLength(1);
     expect(items[0].phaseLabel).toBe("Black Pearl");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectTradeLock — parsed from Steam description lines (not a separate API field)
+// ---------------------------------------------------------------------------
+describe("detectTradeLock", () => {
+  it("parses English «Tradable After: …» into an ISO timestamp when Date understands it", () => {
+    const iso = detectTradeLock([
+      { value: "Tradable After Apr 20, 2027 14:00:00 GMT" },
+    ]);
+    expect(iso).not.toBeNull();
+    expect(new Date(iso!).getTime()).not.toBeNaN();
+    expect(new Date(iso!).getUTCFullYear()).toBe(2027);
+  });
+
+  it("parses «Trade Protected … until …»", () => {
+    const iso = detectTradeLock([{ value: "Trade Protected until May 01, 2028 0:00:00" }]);
+    expect(iso).not.toBeNull();
+    expect(new Date(iso!).getUTCFullYear()).toBe(2028);
+  });
+
+  it("parses Russian «Торговая блокировка … до …»", () => {
+    const iso = detectTradeLock([{ value: "Торговая блокировка до Jun 15, 2027 12:00:00" }]);
+    expect(iso).not.toBeNull();
+    expect(new Date(iso!).getUTCFullYear()).toBe(2027);
+  });
+
+  it("returns null when no trade-hold line is present", () => {
+    expect(detectTradeLock([{ value: "Float Value: 0.15" }])).toBeNull();
+    expect(detectTradeLock(undefined)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeInventory — trade hold (7-day style): tradable flag + description text
+// ---------------------------------------------------------------------------
+describe("normalizeInventory — trade hold / tradable", () => {
+  function minimalDesc(overrides: Record<string, unknown>) {
+    return {
+      classid: "C",
+      instanceid: "I",
+      market_hash_name: "AK-47 | Redline (Field-Tested)",
+      name: "AK-47 | Redline",
+      icon_url: "x",
+      tags: [],
+      ...overrides,
+    };
+  }
+
+  it("sets tradable false and tradeLockUntil when Steam sends Tradable After + tradable 0", () => {
+    const raw = {
+      assets: [{ assetid: "100", classid: "C", instanceid: "I", amount: "1" }],
+      descriptions: [
+        minimalDesc({
+          tradable: 0,
+          marketable: 0,
+          descriptions: [{ value: "Tradable After Apr 20, 2027 14:00:00 GMT" }],
+        }),
+      ],
+    };
+    const [item] = normalizeInventory(raw);
+    expect(item.tradable).toBe(false);
+    expect(item.tradeLockUntil).not.toBeNull();
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    expect(isEffectivelyTradeLocked(item, now)).toBe(true);
+  });
+
+  it("item is still locked when tradable is 0 but no parsable Tradable After line", () => {
+    const raw = {
+      assets: [{ assetid: "101", classid: "C", instanceid: "I", amount: "1" }],
+      descriptions: [
+        minimalDesc({
+          tradable: 0,
+          marketable: 0,
+          descriptions: [{ value: "Some other text without dates" }],
+        }),
+      ],
+    };
+    const [item] = normalizeInventory(raw);
+    expect(item.tradable).toBe(false);
+    expect(item.tradeLockUntil).toBeNull();
+    expect(isEffectivelyTradeLocked(item, new Date())).toBe(true);
+  });
+
+  it("freely tradable item: tradable 1 and no future lock", () => {
+    const raw = {
+      assets: [{ assetid: "102", classid: "C", instanceid: "I", amount: "1" }],
+      descriptions: [
+        minimalDesc({
+          tradable: 1,
+          marketable: 1,
+          descriptions: [{ value: "Exterior: Field-Tested" }],
+        }),
+      ],
+    };
+    const [item] = normalizeInventory(raw);
+    expect(item.tradable).toBe(true);
+    expect(item.tradeLockUntil).toBeNull();
+    expect(isEffectivelyTradeLocked(item, new Date())).toBe(false);
+  });
+
+  it("after lock date passes, timed lock no longer counts (UI uses Date comparison)", () => {
+    const raw = {
+      assets: [{ assetid: "103", classid: "C", instanceid: "I", amount: "1" }],
+      descriptions: [
+        minimalDesc({
+          tradable: 1,
+          marketable: 1,
+          descriptions: [{ value: "Tradable After Jan 01, 2020 0:00:00 GMT" }],
+        }),
+      ],
+    };
+    const [item] = normalizeInventory(raw);
+    expect(item.tradable).toBe(true);
+    expect(item.tradeLockUntil).not.toBeNull();
+    expect(isEffectivelyTradeLocked(item, new Date("2026-01-01T00:00:00.000Z"))).toBe(false);
   });
 });
