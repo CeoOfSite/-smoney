@@ -30,6 +30,12 @@ body {
   background-color: var(--trade-item-rarity);
 }
 
+/* Trade page: overpay bar fill (--trade-overpay-bar-* set from JS on the element) */
+.trade-overpay-bar-fill {
+  width: var(--trade-overpay-bar-width, 0%);
+  background-color: var(--trade-overpay-bar-color, #22c55e);
+}
+
 /* Dark scrollbars (avoids bright white Windows/Chrome default bars on trade UI) */
 .trade-scroll {
   scrollbar-width: thin;

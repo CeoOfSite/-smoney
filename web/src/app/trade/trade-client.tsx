@@ -174,6 +174,8 @@ export default function TradePageClient({
     return "ru";
   });
 
+  const overpayBarFillRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => { localStorage.setItem("chez_currency", currency); }, [currency]);
   useEffect(() => { localStorage.setItem("chez_lang", lang); }, [lang]);
 
@@ -339,6 +341,13 @@ export default function TradePageClient({
       : "text-emerald-500";
   const canSubmit = tradeSelectionReady && tradeBalance?.ok === true && !submitting;
 
+  useLayoutEffect(() => {
+    const el = overpayBarFillRef.current;
+    if (!el) return;
+    el.style.setProperty("--trade-overpay-bar-width", `${overpayBarFillPct}%`);
+    el.style.setProperty("--trade-overpay-bar-color", overpayBarColor);
+  }, [overpayBarFillPct, overpayBarColor]);
+
   const requirementRows: { done: boolean; text: string; issue?: boolean }[] = [
     { done: selectedMy.size > 0, text: t("addYourItems", lang) },
     { done: selectedOwner.size > 0, text: t("selectStoreItems", lang) },
@@ -453,7 +462,7 @@ export default function TradePageClient({
       {tradeSuccess && <div className="bg-emerald-900/30 border-b border-emerald-800/40 px-5 py-2 text-sm text-emerald-400">{tradeSuccess}</div>}
 
       {/* 3-Column Layout — minmax(0,…) so columns shrink inside viewport (no horizontal clip at 100% zoom) */}
-      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,38%)_minmax(0,24%)_minmax(0,38%)] overflow-hidden">
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,38%)_minmax(0,24%)_minmax(0,38%)] items-stretch overflow-hidden">
         {/* ─── LEFT: Your Inventory ─── */}
         <div className="flex min-h-0 min-w-0 flex-col border-r border-zinc-800/50">
           {/* Selected items strip */}
@@ -535,9 +544,9 @@ export default function TradePageClient({
           )}
         </div>
 
-        {/* ─── CENTER: compact, no internal scroll; fits viewport with side grids ─── */}
-        <div className="@container flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#111113]">
-          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-2 py-2 sm:gap-2.5 sm:px-2.5 sm:py-2.5">
+        {/* ─── CENTER: full column height to footer; no internal scroll ─── */}
+        <div className="@container flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#111113]">
+          <div className="flex h-full min-h-0 flex-1 flex-col gap-2 overflow-hidden px-2 py-2 sm:gap-2.5 sm:px-2.5 sm:py-2.5">
             {/* Trade analysis */}
             <div className="grid min-w-0 grid-cols-2 gap-1.5">
               <div className="min-w-0 rounded-lg border border-zinc-800/60 bg-zinc-900/50 p-2 text-center">
@@ -584,8 +593,8 @@ export default function TradePageClient({
                   </div>
                   <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-800">
                     <div
-                      className="h-full rounded-full transition-[width,background-color] duration-300"
-                      style={{ width: `${overpayBarFillPct}%`, backgroundColor: overpayBarColor }}
+                      ref={overpayBarFillRef}
+                      className="trade-overpay-bar-fill h-full rounded-full transition-[width,background-color] duration-300"
                     />
                   </div>
                 </div>
@@ -687,6 +696,9 @@ export default function TradePageClient({
                 ))}
               </div>
             </div>
+
+            {/* Fills space down to footer so the center strip matches side column height */}
+            <div className="min-h-0 flex-1 bg-[#0d0d0f]/40" aria-hidden />
           </div>
         </div>
 
@@ -728,29 +740,32 @@ export default function TradePageClient({
       </div>
 
       {/* Footer */}
-      <footer className="shrink-0 border-t border-zinc-800/60 bg-[#0a0a0c] px-3 py-3 sm:px-6 sm:py-5">
-        <div className="mx-auto flex min-w-0 max-w-6xl flex-col items-center gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-          <div className="flex min-w-0 flex-col items-center gap-1 sm:items-start">
+      <footer className="w-full shrink-0 border-t border-zinc-800/60 bg-[#0a0a0c] px-4 py-4 sm:px-6 sm:py-5 lg:px-10">
+        <div className="flex w-full min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+          <div className="min-w-0 shrink-0 sm:max-w-[32%]">
             <span className="text-sm font-bold tracking-tight text-amber-500">CHEZ<span className="text-zinc-400">TRADING</span></span>
-            <p className="max-w-full text-balance text-center text-[10px] leading-relaxed text-zinc-600 sm:text-left sm:text-[11px]">
+            <p className="mt-1 max-w-full text-balance text-[10px] leading-relaxed text-zinc-600 sm:text-[11px]">
               © 2024–{new Date().getFullYear()} ChezTrading. {t("footerRights", lang)}
             </p>
           </div>
 
-          <div className="flex min-w-0 max-w-full flex-wrap justify-center gap-x-3 gap-y-1.5 px-1 text-center text-[10px] text-zinc-600 sm:gap-x-5 sm:text-[11px]">
-            <span className="max-w-full shrink-0">{t("footerTos", lang)}</span>
-            <span className="max-w-full shrink-0">{t("footerPrivacy", lang)}</span>
-            <span className="max-w-full break-words">{t("footerCookies", lang)}</span>
-          </div>
+          <nav
+            className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[10px] text-zinc-600 sm:justify-center sm:text-[11px] lg:gap-x-8"
+            aria-label="Legal"
+          >
+            <span className="shrink-0 cursor-default hover:text-zinc-400">{t("footerTos", lang)}</span>
+            <span className="shrink-0 cursor-default hover:text-zinc-400">{t("footerPrivacy", lang)}</span>
+            <span className="shrink-0 cursor-default hover:text-zinc-400">{t("footerCookies", lang)}</span>
+          </nav>
 
-          <div className="flex min-w-0 flex-col items-center gap-1 text-[10px] text-zinc-600 sm:items-end sm:text-[11px]">
-            <p className="max-w-full break-all text-center sm:text-right">
-              Support: <span className="text-zinc-500">support@cheztrading.com</span>
+          <div className="min-w-0 shrink-0 text-center sm:max-w-[32%] sm:text-right">
+            <p className="text-[10px] text-zinc-600 sm:text-[11px]">
+              Support: <span className="break-all text-zinc-500">support@cheztrading.com</span>
             </p>
           </div>
         </div>
 
-        <div className="mx-auto mt-3 max-w-6xl min-w-0 border-t border-zinc-800/40 px-1 pt-2 text-center text-[9px] leading-snug text-zinc-700 sm:mt-4 sm:pt-3 sm:text-[10px]">
+        <div className="mt-4 w-full min-w-0 border-t border-zinc-800/40 px-2 pt-3 text-center text-[9px] leading-snug text-zinc-700 sm:mt-5 sm:px-4 sm:pt-4 sm:text-[10px]">
           <span className="text-balance">{t("footerValve", lang)}</span>
         </div>
       </footer>
