@@ -2,13 +2,20 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { formatRefreshCooldownRu, OWNER_REFRESH_COOLDOWN_MS, USER_REFRESH_COOLDOWN_MS } from "@/lib/inventory-refresh-limits";
+import { OWNER_REFRESH_COOLDOWN_MS, USER_REFRESH_COOLDOWN_MS } from "@/lib/inventory-refresh-limits";
 import {
   checkTradeBalance,
   MAX_TRADE_ITEMS_PER_SIDE,
   TRADE_MAX_OVERPAY_PERCENT,
   tradeOverpayPercent,
 } from "@/lib/trade-balance";
+import {
+  t,
+  requirementsHeading,
+  formatRefreshCooldown,
+  fmtLockI18n,
+  type LangCode,
+} from "@/lib/i18n";
 
 import styles from "./page.module.css";
 
@@ -48,18 +55,18 @@ interface InventoryItem {
 // Constants
 // ---------------------------------------------------------------------------
 
-const ITEM_CATEGORIES = [
-  { key: "All", label: "Все предметы", icon: "◈" },
-  { key: "Weapon", label: "Скины оружия", icon: "🎯" },
-  { key: "Knife", label: "Ножи", icon: "🔪" },
-  { key: "Gloves", label: "Перчатки", icon: "🧤" },
-  { key: "Sticker", label: "Стикеры", icon: "🏷" },
-  { key: "Graffiti", label: "Граффити", icon: "🎨" },
-  { key: "Agent", label: "Агенты", icon: "🕵" },
-  { key: "Music Kit", label: "Муз. наборы", icon: "🎵" },
-  { key: "Patch", label: "Нашивки", icon: "🛡" },
-  { key: "Charm", label: "Брелоки", icon: "🔑" },
-  { key: "Container", label: "Кейсы", icon: "📦" },
+const CATEGORY_KEYS = [
+  { key: "All", i18n: "catAll", icon: "◈" },
+  { key: "Weapon", i18n: "catWeapon", icon: "🎯" },
+  { key: "Knife", i18n: "catKnife", icon: "🔪" },
+  { key: "Gloves", i18n: "catGloves", icon: "🧤" },
+  { key: "Sticker", i18n: "catSticker", icon: "🏷" },
+  { key: "Graffiti", i18n: "catGraffiti", icon: "🎨" },
+  { key: "Agent", i18n: "catAgent", icon: "🕵" },
+  { key: "Music Kit", i18n: "catMusicKit", icon: "🎵" },
+  { key: "Patch", i18n: "catPatch", icon: "🛡" },
+  { key: "Charm", i18n: "catCharm", icon: "🔑" },
+  { key: "Container", i18n: "catContainer", icon: "📦" },
 ] as const;
 
 const WEAPON_TYPES = ["Rifle", "Pistol", "SMG", "Shotgun", "Machine Gun"] as const;
@@ -76,13 +83,13 @@ const WEAR_SHORT: Record<string, string> = {
   "Battle-Scarred": "BS",
 };
 
-const SORT_OPTIONS = [
-  { key: "price-desc", label: "Цена: по убыванию" },
-  { key: "price-asc", label: "Цена: по возрастанию" },
-  { key: "name-asc", label: "Имя: A→Z" },
-  { key: "name-desc", label: "Имя: Z→A" },
-  { key: "float-asc", label: "Float ↑" },
-  { key: "float-desc", label: "Float ↓" },
+const SORT_KEYS = [
+  { key: "price-desc", i18n: "sortPriceDesc" },
+  { key: "price-asc", i18n: "sortPriceAsc" },
+  { key: "name-asc", i18n: "sortNameAsc" },
+  { key: "name-desc", i18n: "sortNameDesc" },
+  { key: "float-asc", i18n: "sortFloatAsc" },
+  { key: "float-desc", i18n: "sortFloatDesc" },
 ] as const;
 
 const ITEMS_PER_PAGE = 30;
@@ -97,11 +104,10 @@ const CURRENCIES = [
 type CurrencyCode = (typeof CURRENCIES)[number]["code"];
 
 const LANGUAGES = [
-  { code: "ru", label: "Русский", flag: "🇷🇺" },
-  { code: "en", label: "English", flag: "🇬🇧" },
-  { code: "zh", label: "中文", flag: "🇨🇳" },
+  { code: "ru" as LangCode, label: "Русский", flag: "🇷🇺" },
+  { code: "en" as LangCode, label: "English", flag: "🇬🇧" },
+  { code: "zh" as LangCode, label: "中文", flag: "🇨🇳" },
 ] as const;
-type LangCode = (typeof LANGUAGES)[number]["code"];
 
 function fmtPrice(cents: number, currencyCode: CurrencyCode = "USD") {
   const cur = CURRENCIES.find((c) => c.code === currencyCode) ?? CURRENCIES[0];
@@ -109,14 +115,6 @@ function fmtPrice(cents: number, currencyCode: CurrencyCode = "USD") {
   return `${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur.symbol}`;
 }
 
-function ruRequirementsHeading(pending: number): string {
-  if (pending <= 0) return "";
-  const m10 = pending % 10;
-  const m100 = pending % 100;
-  if (m10 === 1 && m100 !== 11) return `Осталось ${pending} требование`;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return `Осталось ${pending} требования`;
-  return `Осталось ${pending} требований`;
-}
 
 // ---------------------------------------------------------------------------
 // Main Component
@@ -190,8 +188,8 @@ export default function TradePageClient({
       if (typeof data.refreshCooldownRemainingMs === "number" && data.refreshCooldownRemainingMs > 0) {
         setOwnerCooldown(Math.ceil(data.refreshCooldownRemainingMs / 1000));
       }
-    } else setError(data?.message ?? `Магазин: ${data?.error ?? "ошибка"}`);
-  }, []);
+    } else setError(data?.message ?? `${t("errorShop", lang)}: ${data?.error ?? t("errorGeneric", lang)}`);
+  }, [lang]);
 
   const loadMyInventory = useCallback(async () => {
     const res = await fetch("/api/inventory/me");
@@ -202,8 +200,8 @@ export default function TradePageClient({
         setMyCooldown(Math.ceil(data.refreshCooldownRemainingMs / 1000));
       }
     } else if (data?.error !== "trade_url_required" && data?.error !== "unauthorized")
-      setError(`Инвентарь: ${data?.error ?? "ошибка"}`);
-  }, []);
+      setError(`${t("errorInventory", lang)}: ${data?.error ?? t("errorGeneric", lang)}`);
+  }, [lang]);
 
   useEffect(() => {
     (async () => {
@@ -246,7 +244,7 @@ export default function TradePageClient({
       }
     } else {
       const err = await res.json().catch(() => null);
-      setError(err?.message ?? "Ошибка сохранения trade-ссылки");
+      setError(err?.message ?? t("errorSaveTradeUrl", lang));
     }
   }, [tradeUrl]);
 
@@ -275,9 +273,9 @@ export default function TradePageClient({
         const ms = typeof data?.refreshCooldownRemainingMs === "number" ? data.refreshCooldownRemainingMs : fallback;
         setC(Math.ceil(ms / 1000));
         await reload();
-      } else setError(data?.message ?? "Ошибка обновления");
+      } else setError(data?.message ?? t("errorRefresh", lang));
     } finally { setR(false); }
-  }, []);
+  }, [lang]);
 
   // ------ selection (max MAX_TRADE_ITEMS_PER_SIDE per side) ------
   const toggle = useCallback((set: React.Dispatch<React.SetStateAction<Set<string>>>, id: string) => {
@@ -289,7 +287,7 @@ export default function TradePageClient({
       }
       if (prev.size >= MAX_TRADE_ITEMS_PER_SIDE) {
         queueMicrotask(() => {
-          setSelectionNotice(`Не более ${MAX_TRADE_ITEMS_PER_SIDE} предметов с одной стороны`);
+          setSelectionNotice(t("maxItemsPerSide", lang).replace("{n}", String(MAX_TRADE_ITEMS_PER_SIDE)));
           window.setTimeout(() => setSelectionNotice(null), 2800);
         });
         return prev;
@@ -298,7 +296,7 @@ export default function TradePageClient({
       n.add(id);
       return n;
     });
-  }, []);
+  }, [lang]);
 
   // ------ submit trade ------
   const submitTrade = useCallback(async () => {
@@ -314,10 +312,10 @@ export default function TradePageClient({
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        setTradeSubmitError(data?.message ?? data?.error ?? "Ошибка");
+        setTradeSubmitError(data?.message ?? data?.error ?? t("errorGenericShort", lang));
         return;
       }
-      setTradeSuccess(`Заявка #${data.tradeId} создана!`);
+      setTradeSuccess(t("tradeCreated", lang).replace("{id}", data.tradeId));
       setSelectedMy(new Set()); setSelectedOwner(new Set());
       if (data.ownerTradeUrl) window.open(data.ownerTradeUrl, "_blank");
     } finally { setSubmitting(false); }
@@ -342,21 +340,21 @@ export default function TradePageClient({
   const canSubmit = tradeSelectionReady && tradeBalance?.ok === true && !submitting;
 
   const requirementRows: { done: boolean; text: string; issue?: boolean }[] = [
-    { done: selectedMy.size > 0, text: "Добавьте ваши предметы" },
-    { done: selectedOwner.size > 0, text: "Выберите предметы магазина" },
+    { done: selectedMy.size > 0, text: t("addYourItems", lang) },
+    { done: selectedOwner.size > 0, text: t("selectStoreItems", lang) },
   ];
   if (tradeBalance && !tradeBalance.ok) {
     if (tradeBalance.reason === "overpay_too_high") {
       requirementRows.push({
         done: false,
         issue: true,
-        text: `Уменьшите переплату на ${fmt(tradeBalance.excessCents)} (макс. ${TRADE_MAX_OVERPAY_PERCENT}%)`,
+        text: `${t("reduceOverpayBy", lang)} ${fmt(tradeBalance.excessCents)} (${t("maxPercent", lang)} ${TRADE_MAX_OVERPAY_PERCENT}%)`,
       });
     } else if (tradeBalance.reason === "overpay_too_low") {
       requirementRows.push({
         done: false,
         issue: true,
-        text: `Добавьте предметы с вашей стороны или уберите с нашей на ${fmt(tradeBalance.shortfallCents)} (переплата не ниже 0%)`,
+        text: `${t("addItemsOrRemove", lang)} ${fmt(tradeBalance.shortfallCents)} (${t("overpayNotBelow", lang)})`,
       });
     } else {
       requirementRows.push({ done: false, issue: true, text: tradeBalance.message });
@@ -397,16 +395,16 @@ export default function TradePageClient({
   }
 
   if (loading) {
-    return <div className="flex min-h-screen items-center justify-center bg-[#0d0d0f] text-zinc-500">Загрузка...</div>;
+    return <div className="flex min-h-screen items-center justify-center bg-[#0d0d0f] text-zinc-500">{t("loading", lang)}</div>;
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#0d0d0f] text-zinc-100">
+    <div className="flex h-screen flex-col overflow-hidden bg-[#0d0d0f] text-zinc-100">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-zinc-800/60 bg-[#111113] px-5 py-2.5">
+      <header className="flex shrink-0 items-center justify-between border-b border-zinc-800/60 bg-[#111113] px-5 py-2.5">
         <a href="/" className="text-base font-bold tracking-tight text-amber-500">CHEZ<span className="text-zinc-300">TRADING</span></a>
         <nav className="flex items-center gap-5 text-sm text-zinc-500">
-          <span className="text-amber-500/90">Обмен CS2</span>
+          <span className="text-amber-500/90">{t("cs2Trade", lang)}</span>
         </nav>
         <div className="flex items-center gap-3">
           <LangCurrencyPicker
@@ -417,10 +415,10 @@ export default function TradePageClient({
           />
           {!isLoggedIn ? (
             <a href="/api/auth/steam" className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-amber-500 transition-colors">
-              Войти через Steam
+              {t("loginSteam", lang)}
             </a>
           ) : (
-            <a href="/api/auth/logout" className="text-xs text-zinc-500 hover:text-zinc-300">Выйти</a>
+            <a href="/api/auth/logout" className="text-xs text-zinc-500 hover:text-zinc-300">{t("logout", lang)}</a>
           )}
         </div>
       </header>
@@ -435,7 +433,7 @@ export default function TradePageClient({
       ) : null}
       {signedInNotice ? (
         <div className="border-b border-emerald-800/40 bg-emerald-950/30 px-5 py-2 text-sm text-emerald-400">
-          Вы вошли через Steam.
+          {t("signedIn", lang)}
         </div>
       ) : null}
 
@@ -460,23 +458,24 @@ export default function TradePageClient({
         <div className="flex w-[38%] min-w-0 flex-col border-r border-zinc-800/50">
           {/* Selected items strip */}
           <SelectedStrip
-            label="Вы отдаёте"
-            sublabel="Ваш инвентарь"
+            label={t("youGive", lang)}
+            sublabel={t("yourInventory", lang)}
             items={selMyItems}
             total={myTotal}
             onRemove={(id) => toggle(setSelectedMy, id)}
             count={selectedMy.size}
             maxPerSide={MAX_TRADE_ITEMS_PER_SIDE}
             fmt={fmt}
+            lang={lang}
           />
 
           {/* Content — each branch gets flex-1 + overflow-y-auto so it always fills the column */}
           {!isLoggedIn ? (
             <div className="flex flex-1 flex-col items-center justify-start gap-4 overflow-y-auto px-6 pb-6 pt-4 text-center">
               <div className="text-5xl opacity-20">🎮</div>
-              <p className="max-w-xs text-sm text-zinc-500">Войдите через Steam, чтобы начать обменивать ваши CS2 скины на нашей платформе.</p>
+              <p className="max-w-xs text-sm text-zinc-500">{t("loginPrompt", lang)}</p>
               <a href="/api/auth/steam" className="rounded-lg bg-amber-600 px-6 py-2 text-sm font-semibold text-white hover:bg-amber-500">
-                Войти через Steam
+                {t("loginSteam", lang)}
               </a>
             </div>
           ) : !hasTradeUrl || editingTradeUrl ? (
@@ -484,10 +483,10 @@ export default function TradePageClient({
               <div className="flex flex-col items-center gap-4 px-6 pb-6 pt-4">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-600/20 text-2xl">🔗</div>
                 <h3 className="text-base font-bold text-zinc-100">
-                  {hasTradeUrl ? "Обновите trade-ссылку" : "Вставьте вашу trade-ссылку"}
+                  {hasTradeUrl ? t("updateTradeUrl", lang) : t("pasteTradeUrl", lang)}
                 </h3>
                 <p className="max-w-xs text-center text-xs text-zinc-500">
-                  Для загрузки вашего инвентаря нужна ваша trade-ссылка Steam. Можно вставить <strong className="text-zinc-400">только свою</strong> ссылку.
+                  {t("tradeUrlHint", lang)} <strong className="text-zinc-400">{t("onlyYourOwn", lang)}</strong>
                 </p>
                 <div className="flex w-full max-w-sm flex-col gap-2">
                   <input
@@ -499,11 +498,11 @@ export default function TradePageClient({
                   />
                   <div className="flex gap-2">
                     <button onClick={saveTradeUrl} className="flex-1 rounded-lg bg-amber-600 py-2.5 text-xs font-bold text-white hover:bg-amber-500 transition-colors">
-                      Сохранить и загрузить инвентарь
+                      {t("saveAndLoad", lang)}
                     </button>
                     {hasTradeUrl && (
                       <button onClick={() => setEditingTradeUrl(false)} className="rounded-lg border border-zinc-700 px-4 py-2.5 text-xs text-zinc-400 hover:text-zinc-200">
-                        Отмена
+                        {t("cancel", lang)}
                       </button>
                     )}
                   </div>
@@ -514,7 +513,7 @@ export default function TradePageClient({
                   rel="noopener noreferrer"
                   className="text-[11px] text-amber-500/70 hover:text-amber-400 hover:underline"
                 >
-                  Где найти trade-ссылку? →
+                  {t("whereTradeUrl", lang)}
                 </a>
               </div>
             </div>
@@ -527,9 +526,10 @@ export default function TradePageClient({
                 onRefresh={() => doRefresh("my", setMyRefreshing, setMyCooldown, loadMyInventory)}
                 refreshing={myRefreshing} cooldown={myCooldown}
                 tradeUrlAction={() => setEditingTradeUrl(true)}
+                lang={lang}
               />
               <div className="flex-1 overflow-y-auto p-2">
-                <ItemGrid items={filterMy(myItems, mySearch, mySort)} side="guest" selected={selectedMy} onToggle={(id) => toggle(setSelectedMy, id)} fmt={fmt} />
+                <ItemGrid items={filterMy(myItems, mySearch, mySort)} side="guest" selected={selectedMy} onToggle={(id) => toggle(setSelectedMy, id)} fmt={fmt} lang={lang} />
               </div>
             </div>
           )}
@@ -541,11 +541,11 @@ export default function TradePageClient({
             {/* Trade analysis */}
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/50 p-3 text-center">
-                <div className="mb-0.5 text-[10px] text-zinc-500">Вы отдаёте</div>
+                <div className="mb-0.5 text-[10px] text-zinc-500">{t("youGive", lang)}</div>
                 <p className="text-sm font-bold text-zinc-100">{fmt(myTotal)}</p>
               </div>
               <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/50 p-3 text-center">
-                <div className="mb-0.5 text-[10px] text-zinc-500">Вы получаете</div>
+                <div className="mb-0.5 text-[10px] text-zinc-500">{t("youGet", lang)}</div>
                 <p className="text-sm font-bold text-zinc-100">{fmt(ownerTotal)}</p>
               </div>
             </div>
@@ -567,7 +567,7 @@ export default function TradePageClient({
               <div className="flex items-center gap-2">
                 <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-3 py-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className={`text-[10px] font-semibold ${overpayWordColor}`}>Переплата</span>
+                    <span className={`text-[10px] font-semibold ${overpayWordColor}`}>{t("overpay", lang)}</span>
                     <span
                       className={`text-xs font-bold tabular-nums ${
                         overpayPct < 0
@@ -599,7 +599,7 @@ export default function TradePageClient({
                       : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
                   }`}
                 >
-                  {submitting ? "Отправка..." : "Отправить обмен"}
+                  {submitting ? t("sending", lang) : t("submitTrade", lang)}
                 </button>
               </div>
             </div>
@@ -607,10 +607,10 @@ export default function TradePageClient({
             {/* Market info (reference-style) */}
             <div className="flex flex-col items-center gap-2.5" role="note">
               <div className="w-full rounded-lg border border-amber-900/25 bg-[#0c0c0e] px-3.5 py-3 text-center text-[11px] font-medium leading-snug text-amber-500">
-                некоторые трейды могут быть отклонены из-за нестабильности рынка
+                {t("marketWarning", lang)}
               </div>
               <p className="w-full max-w-[260px] text-center text-[10px] leading-relaxed text-zinc-500">
-                Цены могут отличаться из-за износа, паттерна или наклеек.
+                {t("priceDisclaimer", lang)}
               </p>
             </div>
 
@@ -620,10 +620,10 @@ export default function TradePageClient({
             {/* Item Type Categories */}
             <div>
               <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-zinc-400">
-                <span className="text-amber-500">◈</span> Тип предмета
+                <span className="text-amber-500">◈</span> {t("itemType", lang)}
               </h4>
               <div className="flex flex-col gap-1">
-                {ITEM_CATEGORIES.map((cat) => (
+                {CATEGORY_KEYS.map((cat) => (
                   <button
                     key={cat.key}
                     onClick={() => setCategory(cat.key)}
@@ -634,7 +634,7 @@ export default function TradePageClient({
                     }`}
                   >
                     <span className="text-sm">{cat.icon}</span>
-                    {cat.label}
+                    {t(cat.i18n, lang)}
                     {category === cat.key && <span className="ml-auto h-2 w-2 rounded-full bg-amber-500" />}
                   </button>
                 ))}
@@ -644,7 +644,7 @@ export default function TradePageClient({
             {/* Wear filter */}
             <div>
               <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-zinc-400">
-                <span className="text-amber-500">◈</span> Износ
+                <span className="text-amber-500">◈</span> {t("wearLabel", lang)}
               </h4>
               <div className="flex flex-wrap gap-1">
                 <button
@@ -653,7 +653,7 @@ export default function TradePageClient({
                     wear === "All" ? "bg-amber-600/20 text-amber-400 border border-amber-600/40" : "text-zinc-500 hover:text-zinc-300 border border-zinc-800/60"
                   }`}
                 >
-                  Все
+                  {t("wearAll", lang)}
                 </button>
                 {WEAR_LABELS.map((w) => (
                   <button
@@ -673,7 +673,7 @@ export default function TradePageClient({
             <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/50 p-3">
               {pendingRequirements > 0 ? (
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                  {ruRequirementsHeading(pendingRequirements)}
+                  {requirementsHeading(pendingRequirements, lang)}
                 </p>
               ) : null}
               <div className="space-y-1.5">
@@ -688,8 +688,8 @@ export default function TradePageClient({
         {/* ─── RIGHT: Store Inventory ─── */}
         <div className="flex w-[38%] min-w-0 flex-col border-l border-zinc-800/50">
           <SelectedStrip
-            label="Вы получаете"
-            sublabel="Инвентарь платформы"
+            label={t("youGet", lang)}
+            sublabel={t("platformInventory", lang)}
             items={selOwnerItems}
             total={ownerTotal}
             onRemove={(id) => toggle(setSelectedOwner, id)}
@@ -697,6 +697,7 @@ export default function TradePageClient({
             maxPerSide={MAX_TRADE_ITEMS_PER_SIDE}
             isRight
             fmt={fmt}
+            lang={lang}
           />
 
           <PanelHeader
@@ -705,6 +706,7 @@ export default function TradePageClient({
             prefix="owner"
             onRefresh={() => doRefresh("owner", setOwnerRefreshing, setOwnerCooldown, loadOwner)}
             refreshing={ownerRefreshing} cooldown={ownerCooldown}
+            lang={lang}
           />
           <div className="flex-1 overflow-y-auto p-2">
                 <ItemGrid
@@ -714,10 +716,37 @@ export default function TradePageClient({
                   onToggle={(id) => toggle(setSelectedOwner, id)}
                   showAssetId={isAdmin}
                   fmt={fmt}
+                  lang={lang}
                 />
           </div>
         </div>
       </div>
+
+      {/* Footer */}
+      <footer className="shrink-0 border-t border-zinc-800/60 bg-[#0a0a0c] px-6 py-6">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col items-center gap-1.5 sm:items-start">
+            <span className="text-sm font-bold tracking-tight text-amber-500">CHEZ<span className="text-zinc-400">TRADING</span></span>
+            <p className="text-[11px] leading-relaxed text-zinc-600">
+              © 2024–{new Date().getFullYear()} ChezTrading. {t("footerRights", lang)}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap justify-center gap-x-6 gap-y-1 text-[11px] text-zinc-600">
+            <span>{t("footerTos", lang)}</span>
+            <span>{t("footerPrivacy", lang)}</span>
+            <span>{t("footerCookies", lang)}</span>
+          </div>
+
+          <div className="flex flex-col items-center gap-1.5 text-[11px] text-zinc-600 sm:items-end">
+            <p>Support: <span className="text-zinc-500">support@cheztrading.com</span></p>
+          </div>
+        </div>
+
+        <div className="mx-auto mt-4 max-w-6xl border-t border-zinc-800/40 pt-3 text-center text-[10px] leading-relaxed text-zinc-700">
+          {t("footerValve", lang)}
+        </div>
+      </footer>
     </div>
   );
 }
@@ -727,11 +756,11 @@ export default function TradePageClient({
 // ---------------------------------------------------------------------------
 
 function SelectedStrip({
-  label, sublabel, items, total, onRemove, count, maxPerSide, isRight, fmt: fmtFn,
+  label, sublabel, items, total, onRemove, count, maxPerSide, isRight, fmt: fmtFn, lang: l,
 }: {
   label: string; sublabel: string; items: InventoryItem[]; total: number;
   onRemove: (id: string) => void; count: number; maxPerSide: number; isRight?: boolean;
-  fmt: (cents: number) => string;
+  fmt: (cents: number) => string; lang: LangCode;
 }) {
   return (
     <div className="border-b border-zinc-800/50 bg-[#111113] px-4 py-3">
@@ -740,7 +769,7 @@ function SelectedStrip({
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-bold ${count > 0 ? "bg-amber-600 text-white" : "bg-zinc-800 text-zinc-500"}`}
-              title={`Выбрано ${count} из ${maxPerSide}`}
+              title={`${t("selected", l)} ${count} ${t("of", l)} ${maxPerSide}`}
             >
               {count}/{maxPerSide}
             </span>
@@ -752,7 +781,7 @@ function SelectedStrip({
       </div>
       <div className="max-h-[min(240px,38vh)] overflow-y-auto overflow-x-hidden overscroll-y-contain pr-0.5 [scrollbar-gutter:stable]">
         {items.length === 0 ? (
-          <p className="py-2 text-[11px] text-zinc-600">{isRight ? "Предметы не выбраны" : "Выберите предметы для обмена"}</p>
+          <p className="py-2 text-[11px] text-zinc-600">{isRight ? t("itemsNotSelected", l) : t("selectItemsForTrade", l)}</p>
         ) : (
           <div className="flex flex-wrap gap-2 py-0.5">
             {items.map((item) => (
@@ -898,13 +927,13 @@ function ReqLine({ done, text, issue }: { done: boolean; text: string; issue?: b
 
 function PanelHeader({
   search, onSearch, sort, onSort, prefix,
-  onRefresh, refreshing, cooldown, tradeUrlAction,
+  onRefresh, refreshing, cooldown, tradeUrlAction, lang: l,
 }: {
   search: string; onSearch: (v: string) => void;
   sort: string; onSort: (v: string) => void;
   prefix: string;
   onRefresh: () => void; refreshing: boolean; cooldown: number;
-  tradeUrlAction?: () => void;
+  tradeUrlAction?: () => void; lang: LangCode;
 }) {
   return (
     <div className="border-b border-zinc-800/50 bg-[#0f0f11] px-3 py-2.5">
@@ -913,7 +942,7 @@ function PanelHeader({
           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600 text-xs">🔍</span>
           <input
             type="text"
-            placeholder="Поиск предметов..."
+            placeholder={t("searchPlaceholder", l)}
             className="w-full rounded-lg border border-zinc-800/60 bg-zinc-900/60 py-1.5 pl-8 pr-3 text-xs text-zinc-200 placeholder-zinc-600 focus:border-amber-700/40 focus:outline-none"
             value={search}
             onChange={(e) => onSearch(e.target.value)}
@@ -925,18 +954,18 @@ function PanelHeader({
           value={sort}
           onChange={(e) => onSort(e.target.value)}
         >
-          {SORT_OPTIONS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+          {SORT_KEYS.map((s) => <option key={s.key} value={s.key}>{t(s.i18n, l)}</option>)}
         </select>
         <div
           className={`relative inline-flex rounded-lg ${cooldown > 0 && !refreshing ? "group/refcd cursor-not-allowed" : ""}`}
-          title={cooldown > 0 && !refreshing ? `Следующее обновление через ${formatRefreshCooldownRu(cooldown)}` : undefined}
+          title={cooldown > 0 && !refreshing ? `${t("nextRefreshIn", l)} ${formatRefreshCooldown(cooldown, l)}` : undefined}
         >
           <button
             type="button"
             onClick={onRefresh}
             disabled={refreshing || cooldown > 0}
             className={`rounded-lg border p-1.5 text-xs transition-colors ${cooldown > 0 || refreshing ? "border-zinc-800 text-zinc-700 cursor-not-allowed" : "border-zinc-800/60 text-zinc-500 hover:text-zinc-300"}`}
-            aria-label={cooldown > 0 ? `Следующее обновление через ${formatRefreshCooldownRu(cooldown)}` : "Обновить инвентарь"}
+            aria-label={cooldown > 0 ? `${t("nextRefreshIn", l)} ${formatRefreshCooldown(cooldown, l)}` : t("refreshInventory", l)}
           >
             <span className={refreshing ? "inline-block animate-spin" : ""}>↻</span>
           </button>
@@ -945,14 +974,14 @@ function PanelHeader({
               role="tooltip"
               className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 w-max max-w-[min(240px,calc(100vw-24px))] -translate-x-1/2 rounded-md border border-zinc-600/90 bg-zinc-950 px-2 py-1.5 text-center text-[10px] leading-snug text-zinc-100 opacity-0 shadow-xl transition-opacity duration-150 group-hover/refcd:opacity-100"
             >
-              Следующее обновление через
+              {t("nextRefreshIn", l)}
               <br />
-              <span className="font-semibold text-amber-400/90">{formatRefreshCooldownRu(cooldown)}</span>
+              <span className="font-semibold text-amber-400/90">{formatRefreshCooldown(cooldown, l)}</span>
             </span>
           )}
         </div>
         {tradeUrlAction && (
-          <button onClick={tradeUrlAction} className="rounded-lg border border-zinc-800/60 p-1.5 text-[10px] text-zinc-600 hover:text-zinc-400" title="Изменить trade-ссылку">⚙</button>
+          <button onClick={tradeUrlAction} className="rounded-lg border border-zinc-800/60 p-1.5 text-[10px] text-zinc-600 hover:text-zinc-400" title={t("changeTradeUrl", l)}>⚙</button>
         )}
       </div>
     </div>
@@ -963,9 +992,9 @@ function PanelHeader({
 // Item Grid
 // ---------------------------------------------------------------------------
 
-function ItemGrid({ items, side, selected, onToggle, showAssetId, fmt: fmtFn }: {
+function ItemGrid({ items, side, selected, onToggle, showAssetId, fmt: fmtFn, lang: l }: {
   items: InventoryItem[]; side: "owner" | "guest"; selected: Set<string>; onToggle: (id: string) => void;
-  showAssetId?: boolean; fmt: (cents: number) => string;
+  showAssetId?: boolean; fmt: (cents: number) => string; lang: LangCode;
 }) {
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -990,7 +1019,7 @@ function ItemGrid({ items, side, selected, onToggle, showAssetId, fmt: fmtFn }: 
   }, [items.length]);
 
   if (items.length === 0) {
-    return <div className="flex h-40 items-center justify-center text-sm text-zinc-600">Нет предметов</div>;
+    return <div className="flex h-40 items-center justify-center text-sm text-zinc-600">{t("noItems", l)}</div>;
   }
 
   const visible = items.slice(0, visibleCount);
@@ -1007,17 +1036,18 @@ function ItemGrid({ items, side, selected, onToggle, showAssetId, fmt: fmtFn }: 
             onToggle={() => onToggle(item.assetId)}
             showAssetId={!!showAssetId && side === "owner"}
             fmt={fmtFn}
+            lang={l}
           />
         ))}
       </div>
       {hasMore && (
         <div ref={sentinelRef} className="flex items-center justify-center py-6 text-xs text-zinc-600">
-          Загрузка... ({visible.length} из {items.length})
+          {t("loadingItems", l)} ({visible.length} / {items.length})
         </div>
       )}
       {!hasMore && items.length > ITEMS_PER_PAGE && (
         <div className="py-4 text-center text-[11px] text-zinc-600">
-          Все предметы загружены ({items.length})
+          {t("allItemsLoaded", l)} ({items.length})
         </div>
       )}
     </>
@@ -1028,10 +1058,10 @@ function ItemGrid({ items, side, selected, onToggle, showAssetId, fmt: fmtFn }: 
 // Item Card
 // ---------------------------------------------------------------------------
 
-function stickerLabel(s: { name: string }, i: number): string {
-  const t = s.name?.trim();
-  if (t) return t;
-  return `Наклейка ${i + 1}`;
+function stickerLabel(s: { name: string }, i: number, l: LangCode): string {
+  const txt = s.name?.trim();
+  if (txt) return txt;
+  return `${t("stickerN", l)} ${i + 1}`;
 }
 
 function RarityBar({ color }: { color: string }) {
@@ -1040,12 +1070,12 @@ function RarityBar({ color }: { color: string }) {
   return <div ref={ref} className={`absolute inset-x-0 bottom-0 h-[2px] ${styles.rarityBar}`} />;
 }
 
-function InspectInGameButton({ href }: { href: string }) {
+function InspectInGameButton({ href, lang: l }: { href: string; lang: LangCode }) {
   return (
     <a
       href={href}
-      title="Осмотреть в CS2"
-      aria-label="Осмотреть в CS2"
+      title={t("inspectInCs2", l)}
+      aria-label={t("inspectInCs2", l)}
       className="absolute bottom-1 right-1 z-[25] flex h-7 w-8 items-center justify-center rounded-full border border-red-950/60 bg-[#2a1518]/95 text-zinc-200 shadow-md backdrop-blur-[2px] transition-colors hover:border-amber-900/40 hover:bg-[#331a1d] hover:text-white"
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
@@ -1059,9 +1089,9 @@ function InspectInGameButton({ href }: { href: string }) {
   );
 }
 
-function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn }: {
+function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn, lang: l }: {
   item: InventoryItem; isSelected: boolean; onToggle: () => void; showAssetId?: boolean;
-  fmt: (cents: number) => string;
+  fmt: (cents: number) => string; lang: LangCode;
 }) {
   const [assetCopied, setAssetCopied] = useState(false);
   const hasTimedLock = !!item.tradeLockUntil && new Date(item.tradeLockUntil) > new Date();
@@ -1119,7 +1149,7 @@ function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn }: {
                 }
               }}
             >
-              {assetCopied ? "✓" : "Копир."}
+              {assetCopied ? "✓" : t("copy", l)}
             </button>
           </div>
         ) : null}
@@ -1144,17 +1174,17 @@ function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn }: {
 
         {isLocked && (
           <div className="absolute right-1 top-1 flex items-center gap-0.5 rounded bg-orange-700/80 px-1 py-0.5 text-[8px] font-medium text-orange-100">
-            🔒 {hasTimedLock ? fmtLock(item.tradeLockUntil!) : "Locked"}
+            🔒 {hasTimedLock ? fmtLockI18n(item.tradeLockUntil!, l) : "Locked"}
           </div>
         )}
 
-        {item.inspectLink ? <InspectInGameButton href={item.inspectLink} /> : null}
+        {item.inspectLink ? <InspectInGameButton href={item.inspectLink} lang={l} /> : null}
 
         {item.stickers.length > 0 && (
           <div className="group/stickers absolute bottom-1 left-1 z-20 max-w-[calc(100%-4px)]">
             <div
               className="flex flex-wrap gap-0.5"
-              aria-label={item.stickers.map((s, i) => stickerLabel(s, i)).join(", ")}
+              aria-label={item.stickers.map((s, i) => stickerLabel(s, i, l)).join(", ")}
             >
               {item.stickers.slice(0, 5).map((s, i) => (
                 /* eslint-disable-next-line @next/next/no-img-element */
@@ -1171,11 +1201,11 @@ function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn }: {
               )}
             </div>
             <div className="pointer-events-none invisible absolute bottom-full left-0 z-30 mb-1 w-max max-w-[min(240px,calc(100vw-32px))] rounded-md border border-zinc-600/90 bg-zinc-950 px-2 py-1.5 text-left text-[9px] leading-snug text-zinc-100 shadow-xl opacity-0 transition-opacity duration-150 group-hover/stickers:visible group-hover/stickers:opacity-100">
-              <p className="mb-1 text-[8px] font-semibold uppercase tracking-wide text-zinc-500">Наклейки</p>
+              <p className="mb-1 text-[8px] font-semibold uppercase tracking-wide text-zinc-500">{t("stickers", l)}</p>
               <ul className="list-none space-y-1">
                 {item.stickers.map((s, i) => (
                   <li key={`${item.assetId}-st-${i}`} className="break-words border-b border-zinc-800/80 pb-1 last:border-0 last:pb-0">
-                    {stickerLabel(s, i)}
+                    {stickerLabel(s, i, l)}
                   </li>
                 ))}
               </ul>
@@ -1215,7 +1245,7 @@ function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn }: {
           ) : (
             <span className="text-[13px] font-bold leading-none text-amber-400">{fmtFn(item.priceUsd)}</span>
           )}
-          {item.priceSource === "manual" && <span className="text-[8px] text-amber-700">manual</span>}
+          {item.priceSource === "manual" && showAssetId && <span className="text-[8px] text-amber-700">manual</span>}
         </div>
 
         {item.rarityColor && <RarityBar color={item.rarityColor} />}
@@ -1250,11 +1280,3 @@ function floatBarColor(f: number): string {
   return "#ef4444";
 }
 
-function fmtLock(iso: string): string {
-  const d = new Date(iso).getTime() - Date.now();
-  if (d <= 0) return "";
-  const days = Math.floor(d / 86_400_000);
-  const hrs = Math.floor((d % 86_400_000) / 3_600_000);
-  if (days > 0) return `${days}д`;
-  return `${hrs}ч`;
-}
