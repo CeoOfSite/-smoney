@@ -856,17 +856,11 @@ function SelectedStrip({
                 type="button"
                 onClick={() => onRemove(item.assetId)}
                 title={`${item.name} — ${t("removeFromSelection", l)}`}
-                className="group relative rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111113]"
+                className="group relative rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111113]"
               >
-                <div className="relative h-12 w-12 overflow-hidden rounded-lg border border-zinc-700/50 bg-zinc-800/50 p-0.5 transition-[border-color,box-shadow] group-hover:border-red-500/50 group-hover:shadow-[0_0_0_1px_rgba(239,68,68,0.25)] group-active:scale-[0.97]">
+                <div className="relative h-12 w-12 overflow-hidden rounded-lg border border-zinc-700/50 bg-zinc-800/50 p-0.5 transition-[border-color,box-shadow] group-hover:border-amber-500/45 group-hover:shadow-[0_0_0_1px_rgba(245,158,11,0.2)] group-active:scale-[0.97]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={item.iconUrl} alt="" className="h-full w-full object-contain" />
-                  <span
-                    className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold leading-none text-white shadow-sm ring-1 ring-black/40 opacity-90 transition-opacity group-hover:opacity-100"
-                    aria-hidden
-                  >
-                    ×
-                  </span>
                 </div>
               </button>
             ))}
