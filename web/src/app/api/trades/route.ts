@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
   }
   const balance = checkTradeBalance(guestTotalCents, ownerTotalCents);
   if (!balance.ok) {
-    const payload: Record<string, unknown> = { error: balance.reason, message: balance.message };
+    const payload: Record<string, unknown> = { error: balance.reason };
     if (balance.reason === "overpay_too_high") payload.excessCents = balance.excessCents;
     if (balance.reason === "overpay_too_low") payload.shortfallCents = balance.shortfallCents;
     return NextResponse.json(payload, { status: 400 });

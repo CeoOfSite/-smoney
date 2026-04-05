@@ -102,6 +102,11 @@ const T: Translations = {
     zh: "从您这边添加物品或从我们这边移除",
   },
   overpayNotBelow: { ru: "переплата не ниже 0%", en: "overpay must be at least 0%", zh: "超付不低于0%" },
+  tradeNoPricing: {
+    ru: "Нельзя отправить обмен: нет оценки стоимости выбранных предметов (UNAVAILABLE или нулевая цена).",
+    en: "Cannot submit trade: selected items have no valid price (UNAVAILABLE or zero).",
+    zh: "无法提交交易：所选物品无有效价格（不可用或为零）。",
+  },
 
   maxItemsPerSide: {
     ru: "Не более {n} предметов с одной стороны",

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { OWNER_REFRESH_COOLDOWN_MS, USER_REFRESH_COOLDOWN_MS } from "@/lib/inventory-refresh-limits";
 import {
@@ -350,6 +350,22 @@ export default function TradePageClient({
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
+        if (data?.error === "overpay_too_low" && typeof data?.shortfallCents === "number") {
+          setTradeSubmitError(
+            `${t("addItemsOrRemove", lang)} ${fmt(data.shortfallCents)} (${t("overpayNotBelow", lang)})`,
+          );
+          return;
+        }
+        if (data?.error === "overpay_too_high" && typeof data?.excessCents === "number") {
+          setTradeSubmitError(
+            `${t("reduceOverpayBy", lang)} ${fmt(data.excessCents)} (${t("maxPercent", lang)} ${TRADE_MAX_OVERPAY_PERCENT}%)`,
+          );
+          return;
+        }
+        if (data?.error === "no_pricing") {
+          setTradeSubmitError(t("tradeNoPricing", lang));
+          return;
+        }
         setTradeSubmitError(data?.message ?? data?.error ?? t("errorGenericShort", lang));
         return;
       }
@@ -357,7 +373,7 @@ export default function TradePageClient({
       setSelectedMy(new Set()); setSelectedOwner(new Set());
       if (data.ownerTradeUrl) window.open(data.ownerTradeUrl, "_blank");
     } finally { setSubmitting(false); }
-  }, [selectedMy, selectedOwner]);
+  }, [selectedMy, selectedOwner, lang, fmt]);
 
   // ------ computed ------
   const selMyItems = myItems.filter((i) => selectedMy.has(i.assetId));
@@ -366,6 +382,16 @@ export default function TradePageClient({
   const ownerTotal = selOwnerItems.reduce((s, i) => s + (i.belowThreshold ? 0 : i.priceUsd), 0);
   const tradeSelectionReady = selectedMy.size > 0 && selectedOwner.size > 0;
   const tradeBalance = tradeSelectionReady ? checkTradeBalance(myTotal, ownerTotal) : null;
+  const tradeBalanceAlertText = useMemo(() => {
+    if (!tradeBalance || tradeBalance.ok) return null;
+    if (tradeBalance.reason === "overpay_too_low") {
+      return `${t("addItemsOrRemove", lang)} ${fmt(tradeBalance.shortfallCents)} (${t("overpayNotBelow", lang)})`;
+    }
+    if (tradeBalance.reason === "overpay_too_high") {
+      return `${t("reduceOverpayBy", lang)} ${fmt(tradeBalance.excessCents)} (${t("maxPercent", lang)} ${TRADE_MAX_OVERPAY_PERCENT}%)`;
+    }
+    return t("tradeNoPricing", lang);
+  }, [tradeBalance, lang, fmt]);
   const overpayPct = ownerTotal > 0 ? tradeOverpayPercent(myTotal, ownerTotal) ?? 0 : 0;
   const overpayBarFillPct =
     ownerTotal <= 0 ? 0 : overpayPct < 0 ? 0 : Math.min(100, (overpayPct / TRADE_MAX_OVERPAY_PERCENT) * 100);
@@ -402,7 +428,7 @@ export default function TradePageClient({
         text: `${t("addItemsOrRemove", lang)} ${fmt(tradeBalance.shortfallCents)} (${t("overpayNotBelow", lang)})`,
       });
     } else {
-      requirementRows.push({ done: false, issue: true, text: tradeBalance.message });
+      requirementRows.push({ done: false, issue: true, text: t("tradeNoPricing", lang) });
     }
   }
   const pendingRequirements = requirementRows.filter((r) => !r.done).length;
@@ -595,7 +621,7 @@ export default function TradePageClient({
               </div>
             </div>
 
-            {tradeBalance && !tradeBalance.ok && tradeSelectionReady ? (
+            {tradeBalanceAlertText && tradeSelectionReady ? (
               <div
                 className="flex min-w-0 gap-1.5 rounded-lg border border-amber-700/35 bg-zinc-900/90 px-2 py-2 text-[10px] leading-snug text-amber-100/95"
                 role="alert"
@@ -603,7 +629,7 @@ export default function TradePageClient({
                 <span className="shrink-0 text-amber-500" aria-hidden>
                   ⚠
                 </span>
-                <p className="min-w-0 break-words">{tradeBalance.message}</p>
+                <p className="min-w-0 break-words">{tradeBalanceAlertText}</p>
               </div>
             ) : null}
 

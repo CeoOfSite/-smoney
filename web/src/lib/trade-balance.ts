@@ -19,39 +19,27 @@ export function tradeOverpayPercent(guestTotalCents: number, ownerTotalCents: nu
 
 export type TradeBalanceCheck =
   | { ok: true }
-  | { ok: false; reason: "no_pricing"; message: string }
-  | { ok: false; reason: "overpay_too_low"; shortfallCents: number; message: string }
-  | { ok: false; reason: "overpay_too_high"; excessCents: number; message: string };
+  | { ok: false; reason: "no_pricing" }
+  | { ok: false; reason: "overpay_too_low"; shortfallCents: number }
+  | { ok: false; reason: "overpay_too_high"; excessCents: number };
 
+/**
+ * Amounts are USD cents; UI must format with the user's display currency (fmt) + i18n — do not hardcode USD in copy.
+ */
 export function checkTradeBalance(guestTotalCents: number, ownerTotalCents: number): TradeBalanceCheck {
   if (guestTotalCents <= 0 || ownerTotalCents <= 0) {
-    return {
-      ok: false,
-      reason: "no_pricing",
-      message:
-        "Нельзя отправить обмен: нет оценки стоимости выбранных предметов (UNAVAILABLE или нулевая цена).",
-    };
+    return { ok: false, reason: "no_pricing" };
   }
 
   if (guestTotalCents < ownerTotalCents) {
     const shortfallCents = ownerTotalCents - guestTotalCents;
-    return {
-      ok: false,
-      reason: "overpay_too_low",
-      shortfallCents,
-      message: `Переплата ниже 0%. Добавьте предметы с вашей стороны или уберите с нашей на сумму не меньше ${(shortfallCents / 100).toFixed(2)} USD.`,
-    };
+    return { ok: false, reason: "overpay_too_low", shortfallCents };
   }
 
   const maxGuest = maxGuestTotalCentsAtOverpayCap(ownerTotalCents);
   if (guestTotalCents > maxGuest) {
     const excessCents = guestTotalCents - maxGuest;
-    return {
-      ok: false,
-      reason: "overpay_too_high",
-      excessCents,
-      message: `Переплата выше ${TRADE_MAX_OVERPAY_PERCENT}%. Уменьшите её на ${(excessCents / 100).toFixed(2)} USD: уберите предметы с вашей стороны или добавьте с нашей (макс. ${TRADE_MAX_OVERPAY_PERCENT}%).`,
-    };
+    return { ok: false, reason: "overpay_too_high", excessCents };
   }
 
   return { ok: true };
