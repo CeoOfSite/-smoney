@@ -698,8 +698,10 @@ export default function TradePageClient({
             </div>
 
             {/* Fills remaining grid-cell height; panel + disclaimer so the strip isn’t an empty void */}
-            <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-zinc-800/40 bg-zinc-900/25 px-2 py-2 sm:px-2.5 sm:py-2.5">
-              <p className="text-balance text-[9px] leading-relaxed text-zinc-600 sm:text-[10px]">{t("centerPanelFiller", lang)}</p>
+            <div className="flex min-h-0 flex-1 flex-col justify-center rounded-lg border border-zinc-800/40 bg-zinc-900/30 px-2.5 py-3 sm:px-3 sm:py-3.5">
+              <p className="text-balance text-left text-[11px] font-medium leading-snug text-zinc-400 sm:text-xs sm:leading-relaxed">
+                {t("centerPanelFiller", lang)}
+              </p>
             </div>
           </div>
         </div>
