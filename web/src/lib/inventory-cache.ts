@@ -15,7 +15,12 @@ const cache = new Map<string, CacheEntry>();
 const lastOwnerRefresh = new Map<string, number>();
 const lastUserRefresh = new Map<string, number>();
 
-const DEFAULT_TTL_MS = 3 * 60 * 1000; // 3 minutes
+const DEFAULT_TTL_MS = 3 * 60 * 1000; // 3 minutes (guest / strict)
+
+/** Owner store: treat as fresh for this long; after that still serve stale until MAX_STALE. */
+const OWNER_FRESH_TTL_MS = 3 * 60 * 1000;
+/** Owner store: drop cache entirely after this age (must hit Steam again). */
+const OWNER_MAX_STALE_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 export function getCached(steamId: string): NormalizedItem[] | null {
   const entry = cache.get(steamId);
@@ -25,6 +30,27 @@ export function getCached(steamId: string): NormalizedItem[] | null {
     return null;
   }
   return entry.items;
+}
+
+/**
+ * Owner inventory only: stale-while-revalidate read.
+ * Returns null if missing or older than OWNER_MAX_STALE_MS.
+ */
+export function getOwnerCachedStaleWhileRevalidate(steamId: string): {
+  items: NormalizedItem[];
+  isStale: boolean;
+} | null {
+  const entry = cache.get(steamId);
+  if (!entry) return null;
+  const age = Date.now() - entry.fetchedAt;
+  if (age > OWNER_MAX_STALE_MS) {
+    cache.delete(steamId);
+    return null;
+  }
+  return {
+    items: entry.items,
+    isStale: age > OWNER_FRESH_TTL_MS,
+  };
 }
 
 export function setCache(steamId: string, items: NormalizedItem[]) {

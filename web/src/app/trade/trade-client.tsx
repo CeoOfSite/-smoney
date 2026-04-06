@@ -22,6 +22,7 @@ import {
   type LangCode,
 } from "@/lib/i18n";
 import { DEFAULT_FX_RATES, type SupportedFxCode } from "@/lib/fx-rates";
+import { OWNER_INVENTORY_PAGE_DEFAULT } from "@/lib/owner-inventory-api-constants";
 
 import styles from "./page.module.css";
 
@@ -144,6 +145,9 @@ export default function TradePageClient({
   isAdmin?: boolean;
 } = {}) {
   const [ownerItems, setOwnerItems] = useState<InventoryItem[]>([]);
+  const [ownerHasMore, setOwnerHasMore] = useState(false);
+  const [ownerMoreLoading, setOwnerMoreLoading] = useState(false);
+  const ownerItemsRef = useRef<InventoryItem[]>([]);
   const [myItems, setMyItems] = useState<InventoryItem[]>([]);
   const [ownerInventoryLoading, setOwnerInventoryLoading] = useState(true);
   const [myInventoryLoading, setMyInventoryLoading] = useState(false);
@@ -202,6 +206,10 @@ export default function TradePageClient({
 
   useEffect(() => { localStorage.setItem("chez_currency", currency); }, [currency]);
   useEffect(() => { localStorage.setItem("chez_lang", lang); }, [lang]);
+
+  useEffect(() => {
+    ownerItemsRef.current = ownerItems;
+  }, [ownerItems]);
 
   useEffect(() => {
     let cancelled = false;
@@ -344,15 +352,62 @@ export default function TradePageClient({
 
   // ------ loaders ------
   const loadOwner = useCallback(async () => {
-    const res = await fetch("/api/inventory/owner", { credentials: "include" });
+    const qs = new URLSearchParams({
+      limit: String(OWNER_INVENTORY_PAGE_DEFAULT),
+      offset: "0",
+    });
+    const res = await fetch(`/api/inventory/owner?${qs.toString()}`, { credentials: "include" });
     const data = await res.json().catch(() => null);
     if (res.ok && data?.items) {
       setOwnerItems(data.items);
+      const more =
+        typeof data.hasMore === "boolean"
+          ? data.hasMore
+          : typeof data.total === "number"
+            ? (data.offset ?? 0) + data.items.length < data.total
+            : false;
+      setOwnerHasMore(more);
       if (typeof data.refreshCooldownRemainingMs === "number" && data.refreshCooldownRemainingMs > 0) {
         setOwnerCooldown(Math.ceil(data.refreshCooldownRemainingMs / 1000));
       }
     } else setError(data?.message ?? `${t("errorShop", lang)}: ${data?.error ?? t("errorGeneric", lang)}`);
   }, [lang]);
+
+  const ownerMoreInFlightRef = useRef(false);
+
+  const loadOwnerMore = useCallback(async () => {
+    if (ownerMoreInFlightRef.current || ownerMoreLoading || !ownerHasMore) return;
+    ownerMoreInFlightRef.current = true;
+    setOwnerMoreLoading(true);
+    try {
+      const offset = ownerItemsRef.current.length;
+      const qs = new URLSearchParams({
+        limit: String(OWNER_INVENTORY_PAGE_DEFAULT),
+        offset: String(offset),
+      });
+      const res = await fetch(`/api/inventory/owner?${qs.toString()}`, { credentials: "include" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !Array.isArray(data?.items)) {
+        setOwnerHasMore(false);
+        return;
+      }
+      setOwnerItems((prev) => {
+        const seen = new Set(prev.map((i) => i.assetId));
+        const extra = (data.items as InventoryItem[]).filter((i) => !seen.has(i.assetId));
+        return [...prev, ...extra];
+      });
+      const more =
+        typeof data.hasMore === "boolean"
+          ? data.hasMore
+          : typeof data.total === "number"
+            ? (data.offset ?? offset) + data.items.length < data.total
+            : false;
+      setOwnerHasMore(more);
+    } finally {
+      ownerMoreInFlightRef.current = false;
+      setOwnerMoreLoading(false);
+    }
+  }, [ownerMoreLoading, ownerHasMore]);
 
   const loadMyInventory = useCallback(async () => {
     const res = await fetch("/api/inventory/me", { credentials: "include" });
@@ -585,6 +640,38 @@ export default function TradePageClient({
     });
   }
 
+  /** Store inventory: one list; same primary sort as UI; locked only as tiebreaker (below at equal price/name/float). */
+  function sortOwnerItems(items: InventoryItem[], s: string) {
+    const lockRank = (i: InventoryItem) => (i.locked === true ? 1 : 0);
+    return [...items].sort((a, b) => {
+      let cmp = 0;
+      switch (s) {
+        case "price-desc":
+          cmp = b.priceUsd - a.priceUsd;
+          break;
+        case "price-asc":
+          cmp = a.priceUsd - b.priceUsd;
+          break;
+        case "name-asc":
+          cmp = a.name.localeCompare(b.name);
+          break;
+        case "name-desc":
+          cmp = b.name.localeCompare(a.name);
+          break;
+        case "float-asc":
+          cmp = (a.floatValue ?? 1) - (b.floatValue ?? 1);
+          break;
+        case "float-desc":
+          cmp = (b.floatValue ?? 0) - (a.floatValue ?? 0);
+          break;
+        default:
+          cmp = 0;
+      }
+      if (cmp !== 0) return cmp;
+      return lockRank(a) - lockRank(b);
+    });
+  }
+
   function filterMy(items: InventoryItem[], q: string, s: string) {
     let r = items;
     if (q.trim()) { const ql = q.toLowerCase(); r = r.filter((i) => i.name.toLowerCase().includes(ql) || i.marketHashName.toLowerCase().includes(ql)); }
@@ -600,8 +687,7 @@ export default function TradePageClient({
       r = r.filter((i) => i.type?.includes(category));
     }
     if (wear !== "All") r = r.filter((i) => i.wear === wear);
-    const sorted = sortItems(r, s);
-    return [...sorted.filter((i) => !i.locked), ...sorted.filter((i) => i.locked)];
+    return sortOwnerItems(r, s);
   }
 
   return (
@@ -989,6 +1075,9 @@ export default function TradePageClient({
                 showAssetId={isAdmin}
                 fmt={fmt}
                 lang={lang}
+                serverHasMore={ownerHasMore}
+                onLoadMoreServer={() => void loadOwnerMore()}
+                serverLoadingMore={ownerMoreLoading}
               />
             )}
           </div>
@@ -1431,16 +1520,41 @@ function itemGridRowKey(item: InventoryItem, side: "owner" | "guest"): string {
   return `${side}-${item.assetId}`;
 }
 
-function ItemGrid({ items, side, selected, onToggle, onLockedItemClick, showAssetId, fmt: fmtFn, lang: l }: {
-  items: InventoryItem[]; side: "owner" | "guest"; selected: Set<string>; onToggle: (id: string) => void;
+function ItemGrid({
+  items,
+  side,
+  selected,
+  onToggle,
+  onLockedItemClick,
+  showAssetId,
+  fmt: fmtFn,
+  lang: l,
+  serverHasMore,
+  onLoadMoreServer,
+  serverLoadingMore,
+}: {
+  items: InventoryItem[];
+  side: "owner" | "guest";
+  selected: Set<string>;
+  onToggle: (id: string) => void;
   onLockedItemClick?: (item: InventoryItem) => void;
-  showAssetId?: boolean; fmt: (cents: number) => string; lang: LangCode;
+  showAssetId?: boolean;
+  fmt: (cents: number) => string;
+  lang: LangCode;
+  serverHasMore?: boolean;
+  onLoadMoreServer?: () => void | Promise<void>;
+  serverLoadingMore?: boolean;
 }) {
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const serverMoreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setVisibleCount(ITEMS_PER_PAGE);
+    if (side === "owner") {
+      setVisibleCount((v) => (items.length > v ? items.length : v));
+    } else {
+      setVisibleCount(ITEMS_PER_PAGE);
+    }
   }, [items.length, side]);
 
   useEffect(() => {
@@ -1457,6 +1571,22 @@ function ItemGrid({ items, side, selected, onToggle, onLockedItemClick, showAsse
     obs.observe(el);
     return () => obs.disconnect();
   }, [items.length]);
+
+  useEffect(() => {
+    if (side !== "owner" || !onLoadMoreServer) return;
+    const el = serverMoreRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && serverHasMore && !serverLoadingMore) {
+          void onLoadMoreServer();
+        }
+      },
+      { rootMargin: "400px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [side, serverHasMore, serverLoadingMore, onLoadMoreServer]);
 
   if (items.length === 0) {
     return <div className="flex h-40 items-center justify-center text-sm text-zinc-600">{t("noItems", l)}</div>;
@@ -1486,11 +1616,19 @@ function ItemGrid({ items, side, selected, onToggle, onLockedItemClick, showAsse
           {t("loadingItems", l)} ({visible.length} / {items.length})
         </div>
       )}
-      {!hasMore && items.length > ITEMS_PER_PAGE && (
+      {!hasMore && items.length > ITEMS_PER_PAGE && !(side === "owner" && serverHasMore) && (
         <div className="py-4 text-center text-[11px] text-zinc-600">
           {t("allItemsLoaded", l)} ({items.length})
         </div>
       )}
+      {side === "owner" && (serverHasMore || serverLoadingMore) ? (
+        <div
+          ref={serverMoreRef}
+          className="flex min-h-[52px] items-center justify-center py-4 text-xs text-zinc-600"
+        >
+          {serverLoadingMore ? <span className="animate-pulse">{t("loadingItems", l)}…</span> : null}
+        </div>
+      ) : null}
     </>
   );
 }

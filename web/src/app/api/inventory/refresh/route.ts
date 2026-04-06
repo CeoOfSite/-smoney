@@ -15,6 +15,7 @@ import {
   setCache,
 } from "@/lib/inventory-cache";
 import { formatRefreshCooldownRu, OWNER_REFRESH_COOLDOWN_MS, USER_REFRESH_COOLDOWN_MS } from "@/lib/inventory-refresh-limits";
+import { filterJunkFromOwnerSteamItems } from "@/lib/owner-inventory-filters";
 import { fetchGuestInventory, fetchOwnerInventory } from "@/lib/steam-inventory";
 
 export const dynamic = "force-dynamic";
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 502 });
     }
-    setCache(ownerSteamId, result.items);
+    setCache(ownerSteamId, filterJunkFromOwnerSteamItems(result.items));
     return NextResponse.json({
       ok: true,
       count: result.items.length,
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 502 });
     }
-    setCache(user.steamId, result.items);
+    setCache(user.steamId, filterJunkFromOwnerSteamItems(result.items));
     return NextResponse.json({
       ok: true,
       count: result.items.length,

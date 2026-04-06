@@ -1,21 +1,36 @@
 /**
- * GET /api/inventory/owner — public endpoint for owner's CS2 inventory.
- * Cached server-side; fetches via Steam Web API Key (sees trade-locked items).
+ * GET /api/inventory/owner — public owner's CS2 inventory (paged).
+ * Stale-while-revalidate on Steam snapshot: stale cache is served immediately;
+ * background refresh runs via `after()` when the snapshot was stale.
+ *
+ * Query: limit (default 30, max 200), offset (default 0).
  */
-import { NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 
 import { buildOwnerPublicInventoryItems } from "@/lib/build-owner-public-inventory";
 import { refreshCooldownRemainingOwner } from "@/lib/inventory-cache";
+import {
+  OWNER_INVENTORY_PAGE_DEFAULT,
+  OWNER_INVENTORY_PAGE_MAX,
+} from "@/lib/owner-inventory-api-constants";
 import type { OwnerPublicInventoryRow } from "@/lib/owner-manual-trade-lock";
+import { refreshOwnerSteamItemsInCache } from "@/lib/owner-steam-cache-refresh";
 import { resolvePrice } from "@/lib/pricempire";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const ownerSteamId = process.env.OWNER_STEAM_ID;
   if (!ownerSteamId) {
     return NextResponse.json({ error: "owner_not_configured" }, { status: 500 });
   }
+
+  const url = new URL(request.url);
+  const limit = Math.min(
+    OWNER_INVENTORY_PAGE_MAX,
+    Math.max(1, parseInt(url.searchParams.get("limit") ?? String(OWNER_INVENTORY_PAGE_DEFAULT), 10) || OWNER_INVENTORY_PAGE_DEFAULT),
+  );
+  const offset = Math.max(0, parseInt(url.searchParams.get("offset") ?? "0", 10) || 0);
 
   const built = await buildOwnerPublicInventoryItems();
   if (!built.ok) {
@@ -33,34 +48,51 @@ export async function GET() {
     );
   }
 
+  if (built.steamCacheWasStale) {
+    after(() =>
+      refreshOwnerSteamItemsInCache(ownerSteamId).catch((e) =>
+        console.warn("[/api/inventory/owner] background refresh failed:", e),
+      ),
+    );
+  }
+
   const merged = built.items;
-  console.log(
-    `[/api/inventory/owner] merged ${merged.length} rows (manualLockCount=${built.manualLockCount})`,
-  );
+  const total = merged.length;
+  const pageRows = merged.slice(offset, offset + limit);
 
   try {
-    const enriched = await enrichWithPrices(merged, "owner");
+    const enriched = await enrichWithPrices(pageRows, "owner");
+    const hasMore = offset + enriched.length < total;
     return NextResponse.json({
       items: enriched,
-      count: enriched.length,
+      total,
+      offset,
+      limit,
+      hasMore,
       manualLockCount: built.manualLockCount,
       refreshCooldownRemainingMs: refreshCooldownRemainingOwner(ownerSteamId),
     });
   } catch (e) {
     console.error("[/api/inventory/owner] enrichWithPrices error:", e);
+    const fallback = pageRows.map((i) => ({
+      ...i,
+      priceUsd: 0,
+      priceSource: "unavailable" as const,
+      belowThreshold: true,
+    }));
     return NextResponse.json({
-      items: merged.map((i) => ({ ...i, priceUsd: 0, priceSource: "unavailable" as const, belowThreshold: true })),
-      count: merged.length,
+      items: fallback,
+      total,
+      offset,
+      limit,
+      hasMore: offset + fallback.length < total,
       manualLockCount: built.manualLockCount,
       refreshCooldownRemainingMs: refreshCooldownRemainingOwner(ownerSteamId),
     });
   }
 }
 
-async function enrichWithPrices(
-  items: OwnerPublicInventoryRow[],
-  side: "owner" | "guest",
-) {
+async function enrichWithPrices(items: OwnerPublicInventoryRow[], side: "owner" | "guest") {
   return Promise.all(
     items.map(async (item) => {
       const resolved = await resolvePrice(
