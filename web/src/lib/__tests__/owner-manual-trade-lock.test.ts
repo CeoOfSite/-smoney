@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  applyOwnerManualTradeLock,
   extractManualTradeLockAssetIds,
   extractManualTradeLockEntries,
+  filterSteamItemsTradableForTradeTab,
   itemMatchesOwnerManualLock,
+  mergeOwnerSteamAndManualLockJson,
   type OwnerManualTradeLockRule,
 } from "../owner-manual-trade-lock";
 import type { NormalizedItem } from "../steam-inventory";
@@ -26,11 +27,6 @@ const baseItem = (assetId: string, tradable: boolean, classId = "c", instanceId 
   tradable,
   marketable: true,
   inspectLink: null,
-});
-
-const emptyRule = (): OwnerManualTradeLockRule => ({
-  assetIds: new Set(),
-  classInstanceKeys: new Set(),
 });
 
 describe("extractManualTradeLockEntries", () => {
@@ -81,33 +77,35 @@ describe("itemMatchesOwnerManualLock", () => {
   });
 });
 
-describe("applyOwnerManualTradeLock", () => {
-  it("with explicit empty rule is no-op", async () => {
+describe("filterSteamItemsTradableForTradeTab", () => {
+  it("keeps tradable items without future lock", () => {
+    const items = [baseItem("1", true), baseItem("2", true)];
+    const out = filterSteamItemsTradableForTradeTab(items);
+    expect(out.map((i) => i.assetId).sort()).toEqual(["1", "2"]);
+  });
+
+  it("drops non-tradable steam rows", () => {
     const items = [baseItem("1", true), baseItem("2", false)];
-    const out = await applyOwnerManualTradeLock(items, emptyRule());
-    expect(out[0].tradable).toBe(true);
-    expect(out[1].tradable).toBe(false);
+    const out = filterSteamItemsTradableForTradeTab(items);
+    expect(out.map((i) => i.assetId)).toEqual(["1"]);
   });
 
-  it("forces tradable false for asset id in rule", async () => {
-    const rule: OwnerManualTradeLockRule = { assetIds: new Set(["1"]), classInstanceKeys: new Set() };
-    const out = await applyOwnerManualTradeLock([baseItem("1", true), baseItem("2", true)], rule);
-    expect(out[0].tradable).toBe(false);
-    expect(out[1].tradable).toBe(true);
+  it("drops rows with future tradeLockUntil", () => {
+    const future = new Date(Date.now() + 864e5 * 7).toISOString();
+    const items = [baseItem("1", true), { ...baseItem("2", true), tradeLockUntil: future }];
+    const out = filterSteamItemsTradableForTradeTab(items);
+    expect(out.map((i) => i.assetId)).toEqual(["1"]);
   });
+});
 
-  it("forces tradable false for classid_instanceid in rule", async () => {
-    const rule: OwnerManualTradeLockRule = {
-      assetIds: new Set<string>(),
-      classInstanceKeys: new Set(["cx_ix"]),
-    };
-    const out = await applyOwnerManualTradeLock([baseItem("999", true, "cx", "ix")], rule);
-    expect(out[0].tradable).toBe(false);
-  });
-
-  it("keeps already-untradable items untradable", async () => {
-    const rule: OwnerManualTradeLockRule = { assetIds: new Set(["1"]), classInstanceKeys: new Set() };
-    const out = await applyOwnerManualTradeLock([baseItem("1", false)], rule);
-    expect(out[0].tradable).toBe(false);
+describe("mergeOwnerSteamAndManualLockJson", () => {
+  it("appends manual rows with locked true and tradable false", () => {
+    const steam = [baseItem("1", true)];
+    const manual = [baseItem("99", true, "cx", "ix")];
+    const merged = mergeOwnerSteamAndManualLockJson(steam, manual);
+    expect(merged).toHaveLength(2);
+    expect(merged[0].locked).toBe(false);
+    expect(merged[1].locked).toBe(true);
+    expect(merged[1].tradable).toBe(false);
   });
 });

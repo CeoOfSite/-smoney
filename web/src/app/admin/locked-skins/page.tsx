@@ -6,6 +6,7 @@ interface LockMeta {
   loadedFromDb: boolean;
   assetIdCount: number;
   classInstanceKeyCount: number;
+  lockDisplayItemCount: number;
   count?: number;
   updatedAt: string | null;
   sampleAssetIds: string[];
@@ -46,6 +47,7 @@ export default function AdminLockedSkinsPage() {
         loadedFromDb: !!data.loadedFromDb,
         assetIdCount: Number(data.assetIdCount ?? data.count ?? 0),
         classInstanceKeyCount: Number(data.classInstanceKeyCount ?? 0),
+        lockDisplayItemCount: Number(data.lockDisplayItemCount ?? 0),
         updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : null,
         sampleAssetIds: Array.isArray(data.sampleAssetIds)
           ? (data.sampleAssetIds as string[])
@@ -177,6 +179,10 @@ export default function AdminLockedSkinsPage() {
           <p className="mt-1">
             <span className="font-medium text-zinc-800 dark:text-zinc-200">По classid+instanceid:</span>{" "}
             {meta.classInstanceKeyCount}
+          </p>
+          <p className="mt-1">
+            <span className="font-medium text-zinc-800 dark:text-zinc-200">В едином списке на сайте (нормализовано):</span>{" "}
+            {meta.lockDisplayItemCount}
           </p>
           {meta.updatedAt ? (
             <p className="mt-1 text-zinc-500">Обновлено: {new Date(meta.updatedAt).toLocaleString()}</p>

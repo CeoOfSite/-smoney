@@ -5,7 +5,12 @@
 import { NextResponse } from "next/server";
 
 import { getCached, refreshCooldownRemainingOwner, setCache } from "@/lib/inventory-cache";
-import { applyOwnerManualTradeLock } from "@/lib/owner-manual-trade-lock";
+import {
+  filterSteamItemsTradableForTradeTab,
+  getOwnerManualLockDisplayItems,
+  mergeOwnerSteamAndManualLockJson,
+  type OwnerPublicInventoryRow,
+} from "@/lib/owner-manual-trade-lock";
 import { fetchOwnerInventory } from "@/lib/steam-inventory";
 import type { NormalizedItem } from "@/lib/steam-inventory";
 import { resolvePrice } from "@/lib/pricempire";
@@ -48,27 +53,31 @@ export async function GET() {
     setCache(ownerSteamId, items);
   }
 
-  items = await applyOwnerManualTradeLock(items);
+  const steamTradable = filterSteamItemsTradableForTradeTab(items);
+  const manualLock = await getOwnerManualLockDisplayItems();
+  const merged = mergeOwnerSteamAndManualLockJson(steamTradable, manualLock);
 
   try {
-    const enriched = await enrichWithPrices(items, "owner");
+    const enriched = await enrichWithPrices(merged, "owner");
     return NextResponse.json({
       items: enriched,
       count: enriched.length,
+      manualLockCount: manualLock.length,
       refreshCooldownRemainingMs: refreshCooldownRemainingOwner(ownerSteamId),
     });
   } catch (e) {
     console.error("[/api/inventory/owner] enrichWithPrices error:", e);
     return NextResponse.json({
-      items: items.map((i) => ({ ...i, priceUsd: 0, priceSource: "unavailable", belowThreshold: true })),
-      count: items.length,
+      items: merged.map((i) => ({ ...i, priceUsd: 0, priceSource: "unavailable" as const, belowThreshold: true })),
+      count: merged.length,
+      manualLockCount: manualLock.length,
       refreshCooldownRemainingMs: refreshCooldownRemainingOwner(ownerSteamId),
     });
   }
 }
 
 async function enrichWithPrices(
-  items: NormalizedItem[],
+  items: OwnerPublicInventoryRow[],
   side: "owner" | "guest",
 ) {
   return Promise.all(

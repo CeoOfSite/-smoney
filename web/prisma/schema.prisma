@@ -107,10 +107,11 @@ model FxRatesSnapshot {
   fetchedAt DateTime
 }
 
-// Owner store: manual trade-lock overlay (paste Steam JSON in admin). Match by assetId and/or classid_instanceid (context-safe).
+// Owner: trade-lock-only JSON from admin (e.g. Steam context 16 export). Normalized rows for merged public inventory; no server fetch of context 16.
 model OwnerManualTradeLockList {
   id                 String   @id @default("singleton")
   assetIds           String[] @default([])
   classInstanceKeys  String[] @default([]) // "classid_instanceid" from pasted assets[]
+  lockDisplayItems   Json? // NormalizedItem[] — merged into /api/inventory/owner with locked: true
   updatedAt          DateTime @updatedAt
 }

@@ -1,7 +1,7 @@
 import { afterEach, describe, it, expect } from "vitest";
 import {
-  applyOwnerManualTradeLock,
   computeOwnerManualTradeLockDiagnostics,
+  itemMatchesOwnerManualLock,
   type OwnerManualTradeLockRule,
 } from "../owner-manual-trade-lock";
 import type { NormalizedItem } from "../steam-inventory";
@@ -53,23 +53,21 @@ describe("OWNER_MANUAL_TRADE_LOCK_CLASS_INSTANCE_ONLY", () => {
     delete process.env.OWNER_MANUAL_TRADE_LOCK_CLASS_INSTANCE_ONLY;
   });
 
-  it("ignores asset id in rule when env is true", async () => {
+  it("ignores asset id in rule when env is true", () => {
     process.env.OWNER_MANUAL_TRADE_LOCK_CLASS_INSTANCE_ONLY = "true";
     const rule: OwnerManualTradeLockRule = {
       assetIds: new Set(["1"]),
       classInstanceKeys: new Set(),
     };
-    const out = await applyOwnerManualTradeLock([item("1", "c", "i")], rule);
-    expect(out[0].tradable).toBe(true);
+    expect(itemMatchesOwnerManualLock(item("1", "c", "i"), rule)).toBe(false);
   });
 
-  it("still locks by class when env true", async () => {
+  it("still matches by class when env true", () => {
     process.env.OWNER_MANUAL_TRADE_LOCK_CLASS_INSTANCE_ONLY = "1";
     const rule: OwnerManualTradeLockRule = {
       assetIds: new Set(["wrong"]),
       classInstanceKeys: new Set(["cx_ix"]),
     };
-    const out = await applyOwnerManualTradeLock([item("999", "cx", "ix")], rule);
-    expect(out[0].tradable).toBe(false);
+    expect(itemMatchesOwnerManualLock(item("999", "cx", "ix"), rule)).toBe(true);
   });
 });

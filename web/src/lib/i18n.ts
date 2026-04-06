@@ -13,6 +13,8 @@ const T: Translations = {
   youGet: { ru: "Вы получаете", en: "You get", zh: "您获得" },
   yourInventory: { ru: "Ваш инвентарь", en: "Your inventory", zh: "您的库存" },
   platformInventory: { ru: "Инвентарь платформы", en: "Platform inventory", zh: "平台库存" },
+  lockedUntilPrefix: { ru: "Заблокирован до", en: "Locked until", zh: "锁定至" },
+  lockedNoDate: { ru: "Заблокировано", en: "Locked", zh: "已锁定" },
 
   loginPrompt: {
     ru: "Войдите через Steam, чтобы начать обменивать ваши CS2 скины на нашей платформе.",
@@ -47,9 +49,9 @@ const T: Translations = {
     zh: "价格可能因磨损、花纹或贴纸而有所不同。",
   },
   centerPanelFiller: {
-    ru: "Подсказка: фильтры по типу и износу ниже влияют на список магазина. Переплата считается по выбранным предметам с ценой; без оценки в сумму не входят. Перед отправкой проверьте trade-ссылку Steam и лимит предметов в одном обмене.",
-    en: "Tip: type and wear filters below affect the store list. Overpay uses priced selected items only; unpriced items are excluded. Before submitting, verify your Steam trade URL and the per-offer item limit.",
-    zh: "提示：下方的类型与磨损筛选会影响商店列表。超付仅按已标价且已选物品计算；无标价物品不计入合计。提交前请确认 Steam 交易链接与单次报价物品上限。",
+    ru: "Подсказка: список магазина объединяет предметы, доступные к обмену из Steam, и отдельный список трейдлока из админки. Заблокированные карточки нельзя выбрать. Фильтры по типу и износу ниже влияют на общий список.",
+    en: "Tip: the store list merges Steam-tradable items and a separate trade-lock list from admin. Locked cards cannot be selected. Type and wear filters apply to the full list.",
+    zh: "提示：商店列表合并了 Steam 可交易物品与后台单独上传的交易锁定列表。锁定卡片不可选择。类型与磨损筛选作用于整个列表。",
   },
 
   itemType: { ru: "Тип предмета", en: "Item type", zh: "物品类型" },
@@ -194,4 +196,16 @@ export function fmtLockI18n(iso: string, lang: LangCode): string {
   const hrs = Math.floor((d % 86_400_000) / 3_600_000);
   if (days > 0) return `${days}${t("daysShort", lang)}`;
   return `${hrs}${t("hoursShort", lang)}`;
+}
+
+/** Absolute date/time for “Locked until …” (manual JSON / owner cards). */
+export function formatLockUntilDate(iso: string, lang: LangCode): string {
+  const loc = lang === "ru" ? "ru-RU" : lang === "zh" ? "zh-CN" : "en-GB";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString(loc, { dateStyle: "medium", timeStyle: "short" });
+  } catch {
+    return iso;
+  }
 }

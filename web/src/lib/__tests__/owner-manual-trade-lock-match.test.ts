@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { applyOwnerManualTradeLock, extractManualTradeLockEntries, itemMatchesOwnerManualLock } from "../owner-manual-trade-lock";
+import {
+  extractManualTradeLockEntries,
+  itemMatchesOwnerManualLock,
+  mergeOwnerSteamAndManualLockJson,
+} from "../owner-manual-trade-lock";
 import { normalizeInventory } from "../steam-inventory";
 import type { NormalizedItem } from "../steam-inventory";
 
@@ -34,7 +38,7 @@ describe("manual trade lock matches normalized inventory (realistic types)", () 
     expect(itemMatchesOwnerManualLock(item, rule)).toBe(true);
   });
 
-  it("end-to-end: numeric assets[] + string pasted extract → applyOwnerManualTradeLock", async () => {
+  it("end-to-end: normalize + merge marks pasted rows as locked tail", () => {
     const pasted = {
       assets: [
         {
@@ -45,13 +49,9 @@ describe("manual trade lock matches normalized inventory (realistic types)", () 
         },
       ],
     };
-    const ex = extractManualTradeLockEntries(pasted);
-    const rule = {
-      assetIds: new Set(ex.assetIds),
-      classInstanceKeys: new Set(ex.classInstanceKeys),
-    };
+    extractManualTradeLockEntries(pasted);
 
-    const rawInventory = {
+    const lockOnlyJson = {
       assets: [
         {
           assetid: 50881305496,
@@ -74,11 +74,32 @@ describe("manual trade lock matches normalized inventory (realistic types)", () 
       ],
     };
 
-    const items = normalizeInventory(rawInventory);
-    expect(items).toHaveLength(1);
-    expect(items[0].tradable).toBe(true);
+    const steamJson = {
+      assets: [{ assetid: "111", classid: "1", instanceid: "1", amount: "1" }],
+      descriptions: [
+        {
+          classid: "1",
+          instanceid: "1",
+          market_hash_name: "P250 | Sand Dune (Field-Tested)",
+          name: "P250 | Sand Dune",
+          icon_url: "x",
+          tradable: 1,
+          marketable: 1,
+          tags: [],
+        },
+      ],
+    };
 
-    const out = await applyOwnerManualTradeLock(items, rule);
-    expect(out[0].tradable).toBe(false);
+    const steam = normalizeInventory(steamJson);
+    const manual = normalizeInventory(lockOnlyJson);
+    expect(steam).toHaveLength(1);
+    expect(manual).toHaveLength(1);
+
+    const merged = mergeOwnerSteamAndManualLockJson(steam, manual);
+    expect(merged).toHaveLength(2);
+    expect(merged[0].locked).toBe(false);
+    expect(merged[0].assetId).toBe("111");
+    expect(merged[1].locked).toBe(true);
+    expect(merged[1].assetId).toBe("50881305496");
   });
 });

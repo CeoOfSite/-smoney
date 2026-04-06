@@ -1,10 +1,10 @@
 /**
- * Owner/store inventory: manual trade-lock overlay (paste Steam JSON in admin).
+ * Owner/store: trade-lock-only JSON from admin (paste Steam export, often context 16).
  *
- * Steam may return different `assetid` for the same item across contexts (e.g. 730/16 vs 730/2).
- * We match on assetId and on "classid_instanceid" from pasted `assets[]` so locks still apply.
+ * Public inventory = live Steam (context 2, tradable-only slice) **concat** normalized JSON rows,
+ * with JSON rows marked `locked: true`. No matching or merging by assetid between sources.
  *
- * Priority: DB row (if present) → file OWNER_MANUAL_TRADE_LOCK_PATH / data/owner-manual-trade-lock.json
+ * Rule keys (assetIds / classInstanceKeys) remain for admin diagnostics; optional file fallback for display JSON.
  */
 
 import fs from "node:fs";
@@ -12,7 +12,11 @@ import path from "node:path";
 
 import { prisma } from "@/lib/prisma";
 
-import type { NormalizedItem } from "./steam-inventory";
+import { normalizeInventory } from "./steam-inventory";
+import type { NormalizedItem, SteamStickerInfo } from "./steam-inventory";
+
+/** API row after merging Steam + manual lock JSON. */
+export type OwnerPublicInventoryRow = NormalizedItem & { locked: boolean };
 
 export type OwnerManualTradeLockRule = {
   assetIds: ReadonlySet<string>;
@@ -36,6 +40,88 @@ export function itemMatchesOwnerManualLock(item: NormalizedItem, rule: OwnerManu
   if (rule.classInstanceKeys.size > 0 && rule.classInstanceKeys.has(key)) return true;
   if (useClassInstanceOnlyManualLock()) return false;
   return rule.assetIds.has(String(item.assetId));
+}
+
+function coerceSticker(x: unknown): SteamStickerInfo {
+  if (!x || typeof x !== "object") return { name: "", iconUrl: "" };
+  const o = x as Record<string, unknown>;
+  return {
+    name: typeof o.name === "string" ? o.name : "",
+    iconUrl: typeof o.iconUrl === "string" ? o.iconUrl : "",
+  };
+}
+
+/** Rehydrate NormalizedItem[] from Prisma Json. */
+export function coerceLockDisplayItemsFromDbJson(raw: unknown): NormalizedItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: NormalizedItem[] = [];
+  for (const el of raw) {
+    if (!el || typeof el !== "object") continue;
+    const o = el as Record<string, unknown>;
+    const stickersRaw = o.stickers;
+    const stickers = Array.isArray(stickersRaw) ? stickersRaw.map(coerceSticker) : [];
+    out.push({
+      assetId: String(o.assetId ?? ""),
+      classId: String(o.classId ?? ""),
+      instanceId: String(o.instanceId ?? ""),
+      marketHashName: String(o.marketHashName ?? ""),
+      name: String(o.name ?? ""),
+      iconUrl: String(o.iconUrl ?? ""),
+      rarity: typeof o.rarity === "string" ? o.rarity : null,
+      rarityColor: typeof o.rarityColor === "string" ? o.rarityColor : null,
+      type: typeof o.type === "string" ? o.type : null,
+      wear: typeof o.wear === "string" ? o.wear : null,
+      floatValue: typeof o.floatValue === "number" && Number.isFinite(o.floatValue) ? o.floatValue : null,
+      phaseLabel: typeof o.phaseLabel === "string" ? o.phaseLabel : null,
+      stickers,
+      tradeLockUntil: typeof o.tradeLockUntil === "string" ? o.tradeLockUntil : null,
+      tradable: o.tradable === true || o.tradable === 1,
+      marketable: o.marketable === true || o.marketable === 1,
+      inspectLink: typeof o.inspectLink === "string" ? o.inspectLink : null,
+    });
+  }
+  return out;
+}
+
+/** Normalize pasted Steam inventory JSON (assets + descriptions + optional asset_properties). */
+export function buildOwnerLockOnlySnapshotFromParsedJson(
+  parsed: unknown,
+  ownerSteamId?: string,
+): NormalizedItem[] {
+  if (parsed == null || typeof parsed !== "object") return [];
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Steam payload
+    return normalizeInventory(parsed as any, ownerSteamId);
+  } catch {
+    return [];
+  }
+}
+
+/** Live Steam rows eligible for trading (context 2 fetch); excludes untradable and active time-locks. */
+export function filterSteamItemsTradableForTradeTab(items: NormalizedItem[]): NormalizedItem[] {
+  const now = new Date();
+  return items.filter((i) => {
+    if (!i.tradable) return false;
+    if (i.tradeLockUntil && new Date(i.tradeLockUntil) > now) return false;
+    return true;
+  });
+}
+
+/**
+ * Single public list: tradable Steam slice first, then manual JSON rows (locked, not selectable).
+ * Sources are not deduped — admin should upload lock-only JSON that does not duplicate tradable Steam rows.
+ */
+export function mergeOwnerSteamAndManualLockJson(
+  steamTradable: NormalizedItem[],
+  manualLockNormalized: NormalizedItem[],
+): OwnerPublicInventoryRow[] {
+  const steamPart: OwnerPublicInventoryRow[] = steamTradable.map((i) => ({ ...i, locked: false }));
+  const manualPart: OwnerPublicInventoryRow[] = manualLockNormalized.map((i) => ({
+    ...i,
+    locked: true,
+    tradable: false,
+  }));
+  return [...steamPart, ...manualPart];
 }
 
 export type OwnerManualTradeLockDiagnostics = {
@@ -172,6 +258,10 @@ let cachedMtimeMs = 0;
 let cachedPath: string | null = null;
 let cachedFileRule: OwnerManualTradeLockRule = EMPTY_RULE;
 
+let displayFileMtimeMs = 0;
+let displayFilePath: string | null = null;
+let displayFileSnapshot: NormalizedItem[] = [];
+
 function reloadRuleFromFile(filePath: string): OwnerManualTradeLockRule {
   const raw = fs.readFileSync(filePath, "utf8");
   const parsed = JSON.parse(raw) as unknown;
@@ -234,15 +324,35 @@ export async function getOwnerManualTradeLockRule(): Promise<OwnerManualTradeLoc
 }
 
 /**
- * @param ruleOverride optional (tests); otherwise DB then file.
+ * Normalized rows from admin lock-only JSON. DB column wins when present (including []); else parse lock file (mtime-cached).
  */
-export async function applyOwnerManualTradeLock(
-  items: NormalizedItem[],
-  ruleOverride?: OwnerManualTradeLockRule,
-): Promise<NormalizedItem[]> {
-  const rule = ruleOverride ?? (await getOwnerManualTradeLockRule());
-  if (rule.assetIds.size === 0 && rule.classInstanceKeys.size === 0) return items;
-  return items.map((i) =>
-    itemMatchesOwnerManualLock(i, rule) ? { ...i, tradable: false } : i,
-  );
+export async function getOwnerManualLockDisplayItems(): Promise<NormalizedItem[]> {
+  try {
+    const row = await prisma.ownerManualTradeLockList.findUnique({
+      where: { id: "singleton" },
+    });
+    if (row && row.lockDisplayItems != null) {
+      return coerceLockDisplayItemsFromDbJson(row.lockDisplayItems);
+    }
+  } catch (e) {
+    console.error("[owner-manual-trade-lock] db read lockDisplayItems failed:", e);
+  }
+
+  const filePath = resolveOwnerManualTradeLockFilePath();
+  if (!filePath) return [];
+
+  try {
+    const st = fs.statSync(filePath);
+    if (displayFilePath === filePath && st.mtimeMs === displayFileMtimeMs) return displayFileSnapshot;
+
+    const raw = fs.readFileSync(filePath, "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    displayFileSnapshot = buildOwnerLockOnlySnapshotFromParsedJson(parsed, process.env.OWNER_STEAM_ID);
+    displayFilePath = filePath;
+    displayFileMtimeMs = st.mtimeMs;
+    return displayFileSnapshot;
+  } catch (e) {
+    console.error("[owner-manual-trade-lock] lock JSON file read failed:", filePath, e);
+    return [];
+  }
 }

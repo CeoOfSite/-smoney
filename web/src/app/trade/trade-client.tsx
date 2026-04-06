@@ -14,6 +14,7 @@ import {
   t,
   requirementsHeading,
   formatRefreshCooldown,
+  formatLockUntilDate,
   fmtLockI18n,
   type LangCode,
 } from "@/lib/i18n";
@@ -51,6 +52,8 @@ interface InventoryItem {
   priceSource: "catalog" | "manual" | "unavailable";
   belowThreshold: boolean;
   inspectLink: string | null;
+  /** From admin trade-lock JSON (context 16 export); not merged with Steam by asset id. */
+  locked?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1092,6 +1095,13 @@ function PanelHeader({
 // Item Grid
 // ---------------------------------------------------------------------------
 
+function itemGridRowKey(item: InventoryItem, side: "owner" | "guest"): string {
+  if (side === "owner" && item.locked) {
+    return `m-${item.assetId}-${item.classId}-${item.instanceId}`;
+  }
+  return `${side}-${item.assetId}`;
+}
+
 function ItemGrid({ items, side, selected, onToggle, showAssetId, fmt: fmtFn, lang: l }: {
   items: InventoryItem[]; side: "owner" | "guest"; selected: Set<string>; onToggle: (id: string) => void;
   showAssetId?: boolean; fmt: (cents: number) => string; lang: LangCode;
@@ -1130,9 +1140,9 @@ function ItemGrid({ items, side, selected, onToggle, showAssetId, fmt: fmtFn, la
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {visible.map((item) => (
           <ItemCard
-            key={`${side}-${item.assetId}`}
+            key={itemGridRowKey(item, side)}
             item={item}
-            isSelected={selected.has(item.assetId)}
+            isSelected={!item.locked && selected.has(item.assetId)}
             onToggle={() => onToggle(item.assetId)}
             showAssetId={!!showAssetId && side === "owner"}
             fmt={fmtFn}
@@ -1194,8 +1204,10 @@ function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn, lang: l
   fmt: (cents: number) => string; lang: LangCode;
 }) {
   const [assetCopied, setAssetCopied] = useState(false);
+  const manualLocked = item.locked === true;
   const hasTimedLock = !!item.tradeLockUntil && new Date(item.tradeLockUntil) > new Date();
-  const isLocked = !item.tradable || hasTimedLock;
+  const steamLocked = !manualLocked && (!item.tradable || hasTimedLock);
+  const isLocked = manualLocked || steamLocked;
   const isUnavailable = item.belowThreshold && item.priceSource !== "manual";
   const disabled = isLocked || isUnavailable;
 
@@ -1205,11 +1217,13 @@ function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn, lang: l
     <div
       onClick={disabled ? undefined : onToggle}
       className={`group relative flex h-full min-h-[248px] flex-col overflow-visible rounded-xl border transition-all ${
-        disabled
-          ? "border-zinc-800/40 bg-zinc-900/40 opacity-50"
-          : isSelected
-            ? "border-amber-500/60 bg-zinc-800/80 ring-1 ring-amber-500/40 cursor-pointer"
-            : "border-zinc-800/40 bg-zinc-900/60 hover:border-zinc-700/60 hover:bg-zinc-800/60 cursor-pointer"
+        manualLocked
+          ? "cursor-not-allowed border-zinc-800/50 bg-zinc-900/70 opacity-90"
+          : disabled
+            ? "border-zinc-800/40 bg-zinc-900/40 opacity-50"
+            : isSelected
+              ? "border-amber-500/60 bg-zinc-800/80 ring-1 ring-amber-500/40 cursor-pointer"
+              : "border-zinc-800/40 bg-zinc-900/60 hover:border-zinc-700/60 hover:bg-zinc-800/60 cursor-pointer"
       }`}
     >
       {isSelected && (
@@ -1226,6 +1240,13 @@ function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn, lang: l
             {item.wear}
           </span>
         )}
+        {manualLocked ? (
+          <p className="line-clamp-2 w-full px-1 text-center text-[9px] leading-tight text-orange-200/95">
+            {item.tradeLockUntil
+              ? `${t("lockedUntilPrefix", l)} ${formatLockUntilDate(item.tradeLockUntil, l)}`
+              : t("lockedNoDate", l)}
+          </p>
+        ) : null}
         {showAssetId ? (
           <div
             className="flex w-full max-w-full items-center gap-1 px-0.5"
@@ -1273,8 +1294,15 @@ function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn, lang: l
         )}
 
         {isLocked && (
-          <div className="absolute right-1 top-1 flex items-center gap-0.5 rounded bg-orange-700/80 px-1 py-0.5 text-[8px] font-medium text-orange-100">
-            🔒 {hasTimedLock ? fmtLockI18n(item.tradeLockUntil!, l) : "Locked"}
+          <div className="absolute right-1 top-1 flex max-w-[calc(100%-8px)] items-center gap-0.5 rounded bg-orange-700/80 px-1 py-0.5 text-[8px] font-medium text-orange-100">
+            <span className="shrink-0" aria-hidden>
+              🔒
+            </span>
+            {!manualLocked ? (
+              <span className="min-w-0 truncate">
+                {hasTimedLock ? fmtLockI18n(item.tradeLockUntil!, l) : "Locked"}
+              </span>
+            ) : null}
           </div>
         )}
 
