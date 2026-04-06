@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { normalizeInventory, _testing } from "../steam-inventory";
+import { afterEach, describe, it, expect } from "vitest";
+import { normalizeInventory, resolveOwnerInventoryContextId, _testing } from "../steam-inventory";
 
 const {
   isDopplerFamilySkin,
@@ -411,5 +411,25 @@ describe("normalizeInventory — trade hold / tradable", () => {
     expect(item.tradable).toBe(true);
     expect(item.tradeLockUntil).not.toBeNull();
     expect(isEffectivelyTradeLocked(item, new Date("2026-01-01T00:00:00.000Z"))).toBe(false);
+  });
+});
+
+describe("resolveOwnerInventoryContextId", () => {
+  afterEach(() => {
+    delete process.env.OWNER_INVENTORY_CONTEXT_ID;
+  });
+
+  it("defaults to 2 when unset", () => {
+    expect(resolveOwnerInventoryContextId()).toBe("2");
+  });
+
+  it("returns set context when numeric", () => {
+    process.env.OWNER_INVENTORY_CONTEXT_ID = "16";
+    expect(resolveOwnerInventoryContextId()).toBe("16");
+  });
+
+  it("ignores invalid value", () => {
+    process.env.OWNER_INVENTORY_CONTEXT_ID = "not-a-context";
+    expect(resolveOwnerInventoryContextId()).toBe("2");
   });
 });

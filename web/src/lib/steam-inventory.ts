@@ -12,8 +12,16 @@
 import https from "node:https";
 
 const CS2_APP_ID = 730;
-const CONTEXT_ID = "2";
+/** Default CS2 inventory context (in-game items). Guest inventory always uses this. */
+export const DEFAULT_CS2_INVENTORY_CONTEXT_ID = "2";
 const STEAM_CDN = "https://community.akamai.steamstatic.com/economy/image/";
+
+/** Owner/store inventory context — must match the export you paste in admin (e.g. myskins.json often uses "16"). */
+export function resolveOwnerInventoryContextId(): string {
+  const c = process.env.OWNER_INVENTORY_CONTEXT_ID?.trim();
+  if (c && /^\d+$/.test(c)) return c;
+  return DEFAULT_CS2_INVENTORY_CONTEXT_ID;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -539,8 +547,9 @@ const BROWSER_HEADERS = {
 
 async function fetchViaCommunityNew(
   steamId64: string,
+  contextId: string,
 ): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
-  console.log(`[steam-inv] strategy=community-new (paginated)`);
+  console.log(`[steam-inv] strategy=community-new (paginated) context=${contextId}`);
 
   const allAssets: unknown[] = [];
   const allAssetProps: unknown[] = [];
@@ -549,7 +558,7 @@ async function fetchViaCommunityNew(
   const MAX_PAGES = 10;
 
   for (let page = 0; page < MAX_PAGES; page++) {
-    let url = `https://steamcommunity.com/inventory/${steamId64}/${CS2_APP_ID}/${CONTEXT_ID}?l=english&count=2000`;
+    let url = `https://steamcommunity.com/inventory/${steamId64}/${CS2_APP_ID}/${contextId}?l=english&count=2000`;
     if (startAssetId) url += `&start_assetid=${startAssetId}`;
 
     try {
@@ -614,9 +623,10 @@ async function fetchViaCommunityNew(
 
 async function fetchViaCommunityOld(
   steamId64: string,
+  contextId: string,
 ): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
-  const url = `https://steamcommunity.com/profiles/${steamId64}/inventory/json/${CS2_APP_ID}/${CONTEXT_ID}?l=english&trading=1`;
-  console.log(`[steam-inv] strategy=community-old`);
+  const url = `https://steamcommunity.com/profiles/${steamId64}/inventory/json/${CS2_APP_ID}/${contextId}?l=english&trading=1`;
+  console.log(`[steam-inv] strategy=community-old context=${contextId}`);
 
   try {
     const { status, body } = await httpsGet(url, BROWSER_HEADERS);
@@ -649,14 +659,15 @@ async function fetchViaCommunityOld(
 
 async function fetchSteamInventoryRaw(
   steamId64: string,
+  contextId: string = DEFAULT_CS2_INVENTORY_CONTEXT_ID,
 ): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
   const errors: string[] = [];
 
-  const r2 = await fetchViaCommunityNew(steamId64);
+  const r2 = await fetchViaCommunityNew(steamId64, contextId);
   if (r2.ok) return r2;
   errors.push(`new:${r2.error}`);
 
-  const r3 = await fetchViaCommunityOld(steamId64);
+  const r3 = await fetchViaCommunityOld(steamId64, contextId);
   if (r3.ok) return r3;
   errors.push(`old:${r3.error}`);
 
@@ -674,7 +685,9 @@ export async function fetchOwnerInventory(): Promise<
   const ownerSteamId = process.env.OWNER_STEAM_ID;
   if (!ownerSteamId) return { ok: false, error: "missing_owner_steam_id" };
 
-  const result = await fetchSteamInventoryRaw(ownerSteamId);
+  const ctx = resolveOwnerInventoryContextId();
+  console.log(`[steam-inv] fetchOwnerInventory steamId=${ownerSteamId} context=${ctx}`);
+  const result = await fetchSteamInventoryRaw(ownerSteamId, ctx);
   if (!result.ok) return result;
   return { ok: true, items: normalizeInventory(result.data, ownerSteamId) };
 }
@@ -686,7 +699,7 @@ export async function fetchGuestInventory(
   if (!parsed) return { ok: false, error: "invalid_trade_url" };
 
   const steamId64 = steamId64FromPartner(parsed.partner);
-  const result = await fetchSteamInventoryRaw(steamId64);
+  const result = await fetchSteamInventoryRaw(steamId64, DEFAULT_CS2_INVENTORY_CONTEXT_ID);
   if (!result.ok) return result;
   return { ok: true, items: normalizeInventory(result.data, steamId64) };
 }
