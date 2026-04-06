@@ -1770,12 +1770,12 @@ function ItemCard({ item, isSelected, onToggle, onLockedItemClick, showAssetId, 
           </div>
         ) : null}
 
-        {/* Hover: full name + wear only (float track stays in footer — avoids duplicate bars). */}
+        {/* Hover: full name (+ phase if not in name). Wear stays only in footer row — no duplicate Field-Tested / FN line. */}
         <div
           className="pointer-events-none absolute inset-x-0 bottom-0 z-[22] rounded-b-md bg-gradient-to-t from-zinc-950/95 via-zinc-950/75 to-transparent opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100"
           aria-hidden
         />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[24] max-h-[45%] overflow-hidden px-1.5 pb-1 pt-3 opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[24] max-h-[40%] overflow-hidden px-1.5 pb-1 pt-3 opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100">
           <p
             className="break-words text-center text-[8px] font-semibold leading-snug text-zinc-50 drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)] line-clamp-4"
             style={{ color: nameColor }}
@@ -1785,9 +1785,6 @@ function ItemCard({ item, isSelected, onToggle, onLockedItemClick, showAssetId, 
               <span className={`font-bold ${phaseTextColor(item.phaseLabel)}`}> · {item.phaseLabel}</span>
             ) : null}
           </p>
-          {item.wear ? (
-            <p className="mt-1 truncate text-center text-[8px] font-medium text-zinc-200/95 drop-shadow-sm">{item.wear}</p>
-          ) : null}
         </div>
 
         {isLocked && (
