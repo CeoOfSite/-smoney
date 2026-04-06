@@ -1,6 +1,9 @@
 /**
  * Inventory snapshot cache: Redis when REDIS_URL is set (shared across instances),
  * otherwise in-memory Map. Per-user refresh cooldowns use the same store.
+ *
+ * Logs: set INVENTORY_CACHE_LOG=1 (or true) on Render to trace GET/SET. In development,
+ * logging is on unless INVENTORY_CACHE_LOG=0.
  */
 
 import type { NormalizedItem } from "./steam-inventory";
@@ -26,63 +29,124 @@ const lastUserRefresh = new Map<string, number>();
 const DEFAULT_TTL_MS = 3 * 60 * 1000; // 3 minutes (guest / strict)
 
 /** Owner store: after this age, snapshot is "stale" (triggers background revalidation in API). */
-const OWNER_FRESH_TTL_MS = 3 * 60 * 1000;
+export const OWNER_FRESH_TTL_MS = 3 * 60 * 1000;
 
 function snapshotKey(steamId: string) {
   return `${SNAPSHOT_PREFIX}${steamId}`;
 }
 
-async function readSnapshot(steamId: string): Promise<CacheEntry | null> {
+function inventoryCacheLogEnabled(): boolean {
+  const e = process.env.INVENTORY_CACHE_LOG?.trim().toLowerCase();
+  if (e === "1" || e === "true" || e === "on" || e === "yes") return true;
+  if (e === "0" || e === "false" || e === "off" || e === "no") return false;
+  return process.env.NODE_ENV === "development";
+}
+
+/** Structured cache trace (HIT/MISS/SET/DEL). Enable with INVENTORY_CACHE_LOG=1. */
+export function invCacheLog(message: string): void {
+  if (!inventoryCacheLogEnabled()) return;
+  console.log(`[inv-cache] ${message}`);
+}
+
+async function readSnapshot(steamId: string, op: "guest-ttl" | "owner-swr"): Promise<CacheEntry | null> {
+  const key = snapshotKey(steamId);
   const r = getRedis();
   if (r) {
     try {
-      const raw = await r.get(snapshotKey(steamId));
-      if (!raw) return null;
-      const parsed = JSON.parse(raw) as CacheEntry;
-      if (!parsed || !Array.isArray(parsed.items) || typeof parsed.fetchedAt !== "number") {
+      const raw = await r.get(key);
+      if (raw == null || raw === "") {
+        invCacheLog(`GET MISS op=${op} steamId=${steamId} key=${key} store=redis (nil)`);
         return null;
       }
+      const parsed = JSON.parse(raw) as CacheEntry;
+      if (!parsed || !Array.isArray(parsed.items) || typeof parsed.fetchedAt !== "number") {
+        invCacheLog(
+          `GET MISS op=${op} steamId=${steamId} key=${key} store=redis (invalid JSON shape)`,
+        );
+        return null;
+      }
+      const ageMs = Date.now() - parsed.fetchedAt;
+      invCacheLog(
+        `GET HIT op=${op} steamId=${steamId} key=${key} store=redis items=${parsed.items.length} ageMs=${ageMs}`,
+      );
       return parsed;
     } catch (e) {
       console.warn("[inventory-cache] redis GET failed, trying memory", e);
-      return memoryCache.get(steamId) ?? null;
+      invCacheLog(
+        `GET ERROR op=${op} steamId=${steamId} key=${key} store=redis err=${(e as Error).message} → try memory`,
+      );
+      const mem = memoryCache.get(steamId) ?? null;
+      if (!mem) {
+        invCacheLog(`GET MISS op=${op} steamId=${steamId} key=${key} store=memory (fallback empty)`);
+      } else {
+        const ageMs = Date.now() - mem.fetchedAt;
+        invCacheLog(
+          `GET HIT op=${op} steamId=${steamId} key=${key} store=memory items=${mem.items.length} ageMs=${ageMs}`,
+        );
+      }
+      return mem;
     }
   }
-  return memoryCache.get(steamId) ?? null;
+  const mem = memoryCache.get(steamId) ?? null;
+  if (!mem) {
+    invCacheLog(`GET MISS op=${op} steamId=${steamId} key=${key} store=memory (nil)`);
+  } else {
+    const ageMs = Date.now() - mem.fetchedAt;
+    invCacheLog(
+      `GET HIT op=${op} steamId=${steamId} key=${key} store=memory items=${mem.items.length} ageMs=${ageMs}`,
+    );
+  }
+  return mem;
 }
 
 async function writeSnapshot(steamId: string, entry: CacheEntry): Promise<void> {
+  const key = snapshotKey(steamId);
   const r = getRedis();
   if (r) {
     try {
-      await r.set(snapshotKey(steamId), JSON.stringify(entry), "EX", SNAPSHOT_MAX_TTL_SEC);
+      const payload = JSON.stringify(entry);
+      await r.set(key, payload, "EX", SNAPSHOT_MAX_TTL_SEC);
+      invCacheLog(
+        `SET OK steamId=${steamId} key=${key} store=redis items=${entry.items.length} bytes=${payload.length}`,
+      );
       return;
     } catch (e) {
       console.warn("[inventory-cache] redis SET failed, using memory only", e);
+      invCacheLog(`SET FAIL steamId=${steamId} key=${key} store=redis err=${(e as Error).message}`);
     }
   }
   memoryCache.set(steamId, entry);
+  invCacheLog(`SET OK steamId=${steamId} key=${key} store=memory items=${entry.items.length}`);
 }
 
-async function removeSnapshot(steamId: string): Promise<void> {
+async function removeSnapshot(steamId: string, reason: string): Promise<void> {
+  const key = snapshotKey(steamId);
   const r = getRedis();
   if (r) {
     try {
-      await r.del(snapshotKey(steamId));
+      await r.del(key);
+      invCacheLog(`DEL steamId=${steamId} key=${key} store=redis reason=${reason}`);
     } catch (e) {
       console.warn("[inventory-cache] redis DEL failed", e);
+      invCacheLog(`DEL FAIL steamId=${steamId} key=${key} store=redis err=${(e as Error).message}`);
     }
   }
   memoryCache.delete(steamId);
+  if (!r) invCacheLog(`DEL steamId=${steamId} key=${key} store=memory reason=${reason}`);
 }
 
 export async function getCached(steamId: string): Promise<NormalizedItem[] | null> {
-  const entry = await readSnapshot(steamId);
+  const entry = await readSnapshot(steamId, "guest-ttl");
   if (!entry) return null;
-  if (Date.now() - entry.fetchedAt > DEFAULT_TTL_MS) {
-    await removeSnapshot(steamId);
+  const ageMs = Date.now() - entry.fetchedAt;
+  if (ageMs > DEFAULT_TTL_MS) {
+    invCacheLog(
+      `guest-ttl EXPIRED steamId=${steamId} key=${snapshotKey(steamId)} ageMs=${ageMs} ttlMs=${DEFAULT_TTL_MS}`,
+    );
+    await removeSnapshot(steamId, "guest-ttl-expired");
     return null;
   }
+  invCacheLog(`guest-ttl SERVE steamId=${steamId} ageMs=${ageMs}`);
   return entry.items;
 }
 
@@ -94,12 +158,16 @@ export async function getOwnerCachedStaleWhileRevalidate(steamId: string): Promi
   items: NormalizedItem[];
   isStale: boolean;
 } | null> {
-  const entry = await readSnapshot(steamId);
+  const entry = await readSnapshot(steamId, "owner-swr");
   if (!entry) return null;
   const age = Date.now() - entry.fetchedAt;
+  const isStale = age > OWNER_FRESH_TTL_MS;
+  invCacheLog(
+    `owner-swr USE steamId=${steamId} key=${snapshotKey(steamId)} stale=${isStale} ageMs=${age} freshTtlMs=${OWNER_FRESH_TTL_MS}`,
+  );
   return {
     items: entry.items,
-    isStale: age > OWNER_FRESH_TTL_MS,
+    isStale,
   };
 }
 
@@ -108,7 +176,7 @@ export async function setCache(steamId: string, items: NormalizedItem[]) {
 }
 
 export async function invalidateCache(steamId: string) {
-  await removeSnapshot(steamId);
+  await removeSnapshot(steamId, "invalidate");
 }
 
 function remainingCooldown(

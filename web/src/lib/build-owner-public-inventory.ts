@@ -3,7 +3,7 @@
  * Used for trade validation so server checks against merged Steam + manual-lock rows.
  */
 
-import { getOwnerCachedStaleWhileRevalidate, setCache } from "@/lib/inventory-cache";
+import { getOwnerCachedStaleWhileRevalidate, invCacheLog, setCache } from "@/lib/inventory-cache";
 import { filterJunkFromOwnerSteamItems } from "@/lib/owner-inventory-filters";
 import {
   filterSteamItemsTradableForTradeTab,
@@ -29,6 +29,9 @@ export async function buildOwnerPublicInventoryItems(): Promise<BuildOwnerPublic
     items = swr.items;
     steamCacheWasStale = swr.isStale;
   } else {
+    invCacheLog(
+      `STEAM_FOREGROUND ownerSteamId=${ownerSteamId} reason=snapshot_miss sameRedisKey=csmoney:inv:snapshot:${ownerSteamId}`,
+    );
     const result = await fetchOwnerInventory();
     if (!result.ok) return { ok: false, error: result.error };
     items = filterJunkFromOwnerSteamItems(result.items);

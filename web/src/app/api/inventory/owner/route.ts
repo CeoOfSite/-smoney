@@ -8,7 +8,7 @@
 import { after, NextRequest, NextResponse } from "next/server";
 
 import { buildOwnerPublicInventoryItems } from "@/lib/build-owner-public-inventory";
-import { refreshCooldownRemainingOwner } from "@/lib/inventory-cache";
+import { invCacheLog, refreshCooldownRemainingOwner } from "@/lib/inventory-cache";
 import {
   OWNER_INVENTORY_PAGE_DEFAULT,
   OWNER_INVENTORY_PAGE_MAX,
@@ -48,11 +48,19 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (built.steamCacheWasStale) {
+  // Pagination issues many parallel GETs; only the first page should trigger one background Steam refresh.
+  if (built.steamCacheWasStale && offset === 0) {
+    invCacheLog(
+      `SWR_SCHEDULE_BG_REFRESH ownerSteamId=${ownerSteamId} offset=${offset} limit=${limit}`,
+    );
     after(() =>
       refreshOwnerSteamItemsInCache(ownerSteamId).catch((e) =>
         console.warn("[/api/inventory/owner] background refresh failed:", e),
       ),
+    );
+  } else if (built.steamCacheWasStale && offset !== 0) {
+    invCacheLog(
+      `SWR_SKIP_BG_REFRESH ownerSteamId=${ownerSteamId} offset=${offset} (only offset=0 schedules Steam)`,
     );
   }
 
