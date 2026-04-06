@@ -694,7 +694,7 @@ export default function TradePageClient({
   }
 
   return (
-    <div className="scheme-dark flex h-screen min-w-0 flex-col overflow-x-hidden overflow-y-hidden bg-[#0d0d0f] text-zinc-100">
+    <div className="scheme-dark flex min-h-screen min-w-0 flex-col overflow-x-hidden bg-[#0d0d0f] text-zinc-100">
       {/* Header */}
       <header className="flex shrink-0 items-center justify-between border-b border-zinc-800/60 bg-[#111113] px-4 py-2 sm:px-5">
         <a href="/" className="text-base font-bold tracking-tight text-amber-500">CHEZ<span className="text-zinc-300">TRADING</span></a>
@@ -760,8 +760,10 @@ export default function TradePageClient({
         </div>
       )}
 
-      {/* 3-Column Layout — 1fr row fills flex-1 height (auto row was content-sized; center column stayed short) */}
-      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,39%)_minmax(0,22%)_minmax(0,39%)] grid-rows-[minmax(0,1fr)] items-stretch overflow-hidden">
+      {/* Main: flex-1 + min-h-0 so columns can shrink and scroll; page grows past 100vh when needed (zoom / many banners) */}
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        {/* 3-Column Layout — internal scroll via .trade-scroll; footer stays in document flow below */}
+        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,39%)_minmax(0,22%)_minmax(0,39%)] grid-rows-[minmax(0,1fr)] items-stretch overflow-hidden">
         {/* ─── LEFT: Your Inventory ─── */}
         <div className="flex min-h-0 min-w-0 flex-col border-r border-zinc-800/50">
           {/* Selected items strip */}
@@ -1083,10 +1085,11 @@ export default function TradePageClient({
             )}
           </div>
         </div>
-      </div>
+        </div>
+      </main>
 
-      {/* Footer */}
-      <footer className="w-full shrink-0 border-t border-zinc-800/60 bg-[#0a0a0c] px-3 py-2 sm:px-5 sm:py-2.5 lg:px-8">
+      {/* Footer — normal flow; mt-auto pins to bottom when main is shorter than viewport */}
+      <footer className="mt-auto w-full shrink-0 border-t border-zinc-800/60 bg-[#0a0a0c] px-3 py-2 sm:px-5 sm:py-2.5 lg:px-8">
         <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="min-w-0 shrink-0 sm:max-w-[32%]">
             <span className="text-xs font-bold tracking-tight text-amber-500 sm:text-sm">CHEZ<span className="text-zinc-400">TRADING</span></span>
