@@ -427,6 +427,29 @@ function detectTradeLock(
 // Normalizer — handles both new and old Steam JSON formats
 // ---------------------------------------------------------------------------
 
+/**
+ * Join key for Steam `assets[]` ↔ `descriptions[]` (and rg* shapes).
+ * Normalizes number/string and camelCase field names so lookups do not miss.
+ */
+export function steamClassInstanceKey(classid: unknown, instanceid: unknown): string {
+  const hasClass = classid !== undefined && classid !== null && String(classid).trim() !== "";
+  const c = hasClass ? String(classid) : "";
+  const hasInst =
+    instanceid !== undefined && instanceid !== null && String(instanceid).trim() !== "";
+  const i = hasInst ? String(instanceid) : "0";
+  return `${c}_${i}`;
+}
+
+function rawClassId(obj: Record<string, unknown> | null | undefined): unknown {
+  if (!obj || typeof obj !== "object") return undefined;
+  return obj.classid ?? obj.classId;
+}
+
+function rawInstanceId(obj: Record<string, unknown> | null | undefined): unknown {
+  if (!obj || typeof obj !== "object") return undefined;
+  return obj.instanceid ?? obj.instanceId;
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function normalizeInventory(raw: any, ownerSteamId?: string): NormalizedItem[] {
   // New format: { assets: [...], descriptions: [...] }
@@ -452,7 +475,13 @@ export function normalizeInventory(raw: any, ownerSteamId?: string): NormalizedI
 
   const descMap = new Map<string, any>();
   for (const d of descriptions) {
-    descMap.set(`${d.classid}_${d.instanceid}`, d);
+    if (!d || typeof d !== "object") continue;
+    const dr = d as Record<string, unknown>;
+    const cid = rawClassId(dr);
+    const iid = rawInstanceId(dr);
+    if (cid === undefined || cid === null || String(cid).trim() === "") continue;
+    const key = steamClassInstanceKey(cid, iid);
+    if (!descMap.has(key)) descMap.set(key, d);
   }
 
   // asset_properties is a SEPARATE top-level array in Steam's response
@@ -467,7 +496,15 @@ export function normalizeInventory(raw: any, ownerSteamId?: string): NormalizedI
 
   const items: NormalizedItem[] = [];
   for (const a of assets) {
-    const desc = descMap.get(`${a.classid}_${a.instanceid}`);
+    if (!a || typeof a !== "object") continue;
+    const ar = a as Record<string, unknown>;
+    const cid = rawClassId(ar);
+    const iid = rawInstanceId(ar);
+    if (cid === undefined || cid === null || String(cid).trim() === "") continue;
+
+    let desc = descMap.get(steamClassInstanceKey(cid, iid));
+    if (!desc) desc = descMap.get(steamClassInstanceKey(cid, "0"));
+
     if (!desc) continue;
 
     const icon = desc.icon_url ? `${STEAM_CDN}${desc.icon_url}` : "";
@@ -476,7 +513,7 @@ export function normalizeInventory(raw: any, ownerSteamId?: string): NormalizedI
 
     const itemName: string = desc.market_hash_name ?? desc.name ?? "";
 
-    const assetId = String(a.assetid ?? a.id ?? "");
+    const assetId = String(ar.assetid ?? ar.assetId ?? ar.id ?? "");
     const propsForAsset = assetPropsMap.get(String(assetId));
     const { floatValue: apFloat, paintIndex, stringProps } = extractFromAssetProperties(propsForAsset);
     const apPhase = phaseFromPaintIndex(paintIndex, itemName);
@@ -494,8 +531,9 @@ export function normalizeInventory(raw: any, ownerSteamId?: string): NormalizedI
 
     items.push({
       assetId,
-      classId: a.classid != null && a.classid !== "" ? String(a.classid) : "",
-      instanceId: a.instanceid != null && a.instanceid !== "" ? String(a.instanceid) : "",
+      classId: String(cid),
+      instanceId:
+        iid !== undefined && iid !== null && String(iid) !== "" ? String(iid) : "",
       marketHashName: desc.market_hash_name ?? desc.name ?? "",
       name: desc.name ?? "",
       iconUrl: icon,

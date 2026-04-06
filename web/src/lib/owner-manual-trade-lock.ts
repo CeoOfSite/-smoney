@@ -83,7 +83,11 @@ export function coerceLockDisplayItemsFromDbJson(raw: unknown): NormalizedItem[]
   return out;
 }
 
-/** Normalize pasted Steam inventory JSON (assets + descriptions + optional asset_properties). */
+/**
+ * Normalize pasted Steam inventory JSON (assets + descriptions + optional asset_properties).
+ * Uses `normalizeInventory`, which joins each asset to its description via `steamClassInstanceKey`
+ * (string/number ids, camelCase fields, optional instance → `_0` fallback).
+ */
 export function buildOwnerLockOnlySnapshotFromParsedJson(
   parsed: unknown,
   ownerSteamId?: string,

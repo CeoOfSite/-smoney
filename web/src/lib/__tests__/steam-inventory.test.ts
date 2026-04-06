@@ -3,6 +3,7 @@ import {
   normalizeInventory,
   ownerInventoryErrorAllowsDefaultContextFallback,
   resolveOwnerInventoryContextId,
+  steamClassInstanceKey,
   _testing,
 } from "../steam-inventory";
 
@@ -153,6 +154,80 @@ describe("detectPhaseFromTagsDescs", () => {
   it("returns null when no phase info", () => {
     const descs = [{ value: "Some random text" }];
     expect(detectPhaseFromTagsDescs(descs, undefined)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeInventory — join assets[] to descriptions[] by classid+instanceid
+// ---------------------------------------------------------------------------
+describe("steamClassInstanceKey + normalizeInventory join", () => {
+  it("produces one stable key for number vs string class/instance ids", () => {
+    expect(steamClassInstanceKey("7993039468", "8347147322")).toBe(
+      steamClassInstanceKey(7993039468, 8347147322),
+    );
+  });
+
+  it("joins asset row to description when types differ (string asset / numeric description)", () => {
+    const raw = {
+      assets: [
+        { assetid: "50881305496", classid: "7993039468", instanceid: "8347147322", amount: "1" },
+      ],
+      descriptions: [
+        {
+          classid: 7993039468,
+          instanceid: 8347147322,
+          market_hash_name: "Galil AR | Test (FN)",
+          name: "Galil AR | Test",
+          icon_url: "ico",
+          tradable: 0,
+          marketable: 0,
+          tags: [],
+        },
+      ],
+    };
+    const items = normalizeInventory(raw);
+    expect(items).toHaveLength(1);
+    expect(items[0].assetId).toBe("50881305496");
+    expect(items[0].marketHashName).toBe("Galil AR | Test (FN)");
+  });
+
+  it("joins when description uses camelCase classId / instanceId", () => {
+    const raw = {
+      assets: [{ assetid: "1", classid: "10", instanceid: "20", amount: "1" }],
+      descriptions: [
+        {
+          classId: "10",
+          instanceId: "20",
+          market_hash_name: "Item",
+          name: "Item",
+          icon_url: "x",
+          tradable: 1,
+          marketable: 1,
+          tags: [],
+        },
+      ],
+    };
+    expect(normalizeInventory(raw)).toHaveLength(1);
+  });
+
+  it("resolves description under classid_0 when asset omits instanceid", () => {
+    const raw = {
+      assets: [{ assetid: "99", classid: "100", amount: "1" }],
+      descriptions: [
+        {
+          classid: "100",
+          instanceid: "0",
+          market_hash_name: "Commodity",
+          name: "Commodity",
+          tradable: 1,
+          marketable: 1,
+          tags: [],
+        },
+      ],
+    };
+    const items = normalizeInventory(raw);
+    expect(items).toHaveLength(1);
+    expect(items[0].instanceId).toBe("");
   });
 });
 
