@@ -15,6 +15,21 @@ const T: Translations = {
   platformInventory: { ru: "Инвентарь платформы", en: "Platform inventory", zh: "平台库存" },
   lockedUntilPrefix: { ru: "Заблокирован до", en: "Locked until", zh: "锁定至" },
   lockedNoDate: { ru: "Заблокировано", en: "Locked", zh: "已锁定" },
+  lockedSelectToastWithDate: {
+    ru: "Этот предмет заблокирован до {date}. Дождитесь разблокировки, после этого его можно будет добавить в обмен.",
+    en: "This item is locked until {date}. Wait until it unlocks, then you can add it to a trade.",
+    zh: "该物品将锁定至 {date}。请待解锁后再加入交易。",
+  },
+  lockedSelectToastNoDate: {
+    ru: "Этот предмет временно заблокирован для обмена.",
+    en: "This item is temporarily locked for trading.",
+    zh: "该物品暂时无法交易。",
+  },
+  lockedTooltipUnlocksIn: {
+    ru: "Разблокировка примерно через: {time}",
+    en: "Unlocks in approximately: {time}",
+    zh: "约 {time} 后解锁",
+  },
 
   loginPrompt: {
     ru: "Войдите через Steam, чтобы начать обменивать ваши CS2 скины на нашей платформе.",
@@ -208,4 +223,47 @@ export function formatLockUntilDate(iso: string, lang: LangCode): string {
   } catch {
     return iso;
   }
+}
+
+/** dd.mm.yyyy, hh:mm for RU toast; locale medium+short otherwise. */
+export function formatTradeLockDateDisplay(iso: string, lang: LangCode): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    if (lang === "ru") {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    return formatLockUntilDate(iso, lang);
+  } catch {
+    return iso;
+  }
+}
+
+/** Toast line when user taps an admin-list item (`locked: true`). */
+export function lockedManualItemToastMessage(
+  item: { tradeLockUntil: string | null | undefined },
+  lang: LangCode,
+): string {
+  const raw = item.tradeLockUntil?.trim();
+  if (raw) {
+    const dateStr = formatTradeLockDateDisplay(raw, lang);
+    return t("lockedSelectToastWithDate", lang).replace("{date}", dateStr);
+  }
+  return t("lockedSelectToastNoDate", lang);
+}
+
+export type LockedTitleItem = { name: string; tradeLockUntil?: string | null };
+
+/** Native `title` for locked owner cards (hover). */
+export function lockedManualItemNativeTitle(item: LockedTitleItem, lang: LangCode): string {
+  const base = item.name;
+  if (!item.tradeLockUntil?.trim()) {
+    return `${base} — ${t("lockedNoDate", lang)}`;
+  }
+  const rel = fmtLockI18n(item.tradeLockUntil, lang);
+  if (rel) {
+    return `${base} — ${t("lockedTooltipUnlocksIn", lang).replace("{time}", rel)}`;
+  }
+  return `${base} — ${t("lockedUntilPrefix", lang)} ${formatTradeLockDateDisplay(item.tradeLockUntil, lang)}`;
 }

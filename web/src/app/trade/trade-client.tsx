@@ -14,8 +14,9 @@ import {
   t,
   requirementsHeading,
   formatRefreshCooldown,
-  formatLockUntilDate,
   fmtLockI18n,
+  lockedManualItemNativeTitle,
+  lockedManualItemToastMessage,
   type LangCode,
 } from "@/lib/i18n";
 import { DEFAULT_FX_RATES, type SupportedFxCode } from "@/lib/fx-rates";
@@ -159,6 +160,8 @@ export default function TradePageClient({
   const [selectedMy, setSelectedMy] = useState<Set<string>>(new Set());
   const [selectedOwner, setSelectedOwner] = useState<Set<string>>(new Set());
   const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
+  const [lockedTapNotice, setLockedTapNotice] = useState<string | null>(null);
+  const lockedTapNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Per-panel search/sort
   const [mySearch, setMySearch] = useState("");
@@ -293,6 +296,24 @@ export default function TradePageClient({
   useEffect(() => {
     setTradeSubmitError(null);
   }, [selectedMy, selectedOwner]);
+
+  const showLockedTapNotice = useCallback(
+    (item: InventoryItem) => {
+      setLockedTapNotice(lockedManualItemToastMessage(item, lang));
+      if (lockedTapNoticeTimerRef.current) clearTimeout(lockedTapNoticeTimerRef.current);
+      lockedTapNoticeTimerRef.current = setTimeout(() => {
+        setLockedTapNotice(null);
+        lockedTapNoticeTimerRef.current = null;
+      }, 4800);
+    },
+    [lang],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (lockedTapNoticeTimerRef.current) clearTimeout(lockedTapNoticeTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (ownerCooldown <= 0 && myCooldown <= 0) return;
@@ -465,7 +486,8 @@ export default function TradePageClient({
       r = r.filter((i) => i.type?.includes(category));
     }
     if (wear !== "All") r = r.filter((i) => i.wear === wear);
-    return sortItems(r, s);
+    const sorted = sortItems(r, s);
+    return [...sorted.filter((i) => !i.locked), ...sorted.filter((i) => i.locked)];
   }
 
   if (loading) {
@@ -514,6 +536,15 @@ export default function TradePageClient({
       {selectionNotice ? (
         <div className="border-b border-amber-800/40 bg-amber-950/25 px-5 py-2 text-sm text-amber-200" role="status">
           {selectionNotice}
+        </div>
+      ) : null}
+
+      {lockedTapNotice ? (
+        <div
+          className="border-b border-orange-800/45 bg-orange-950/35 px-5 py-2.5 text-sm leading-snug text-orange-100"
+          role="status"
+        >
+          {lockedTapNotice}
         </div>
       ) : null}
 
@@ -800,6 +831,7 @@ export default function TradePageClient({
                   side="owner"
                   selected={selectedOwner}
                   onToggle={(id) => toggle(setSelectedOwner, id)}
+                  onLockedItemClick={showLockedTapNotice}
                   showAssetId={isAdmin}
                   fmt={fmt}
                   lang={lang}
@@ -1102,8 +1134,9 @@ function itemGridRowKey(item: InventoryItem, side: "owner" | "guest"): string {
   return `${side}-${item.assetId}`;
 }
 
-function ItemGrid({ items, side, selected, onToggle, showAssetId, fmt: fmtFn, lang: l }: {
+function ItemGrid({ items, side, selected, onToggle, onLockedItemClick, showAssetId, fmt: fmtFn, lang: l }: {
   items: InventoryItem[]; side: "owner" | "guest"; selected: Set<string>; onToggle: (id: string) => void;
+  onLockedItemClick?: (item: InventoryItem) => void;
   showAssetId?: boolean; fmt: (cents: number) => string; lang: LangCode;
 }) {
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
@@ -1144,6 +1177,7 @@ function ItemGrid({ items, side, selected, onToggle, showAssetId, fmt: fmtFn, la
             item={item}
             isSelected={!item.locked && selected.has(item.assetId)}
             onToggle={() => onToggle(item.assetId)}
+            onLockedItemClick={side === "owner" ? onLockedItemClick : undefined}
             showAssetId={!!showAssetId && side === "owner"}
             fmt={fmtFn}
             lang={l}
@@ -1199,8 +1233,9 @@ function InspectInGameButton({ href, lang: l }: { href: string; lang: LangCode }
   );
 }
 
-function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn, lang: l }: {
+function ItemCard({ item, isSelected, onToggle, onLockedItemClick, showAssetId, fmt: fmtFn, lang: l }: {
   item: InventoryItem; isSelected: boolean; onToggle: () => void; showAssetId?: boolean;
+  onLockedItemClick?: (item: InventoryItem) => void;
   fmt: (cents: number) => string; lang: LangCode;
 }) {
   const [assetCopied, setAssetCopied] = useState(false);
@@ -1209,17 +1244,38 @@ function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn, lang: l
   const steamLocked = !manualLocked && (!item.tradable || hasTimedLock);
   const isLocked = manualLocked || steamLocked;
   const isUnavailable = item.belowThreshold && item.priceSource !== "manual";
-  const disabled = isLocked || isUnavailable;
+  const cannotSelect = isLocked || isUnavailable;
 
   const nameColor = item.rarityColor ?? "#e4e4e7";
+  const cardTitle = manualLocked ? lockedManualItemNativeTitle(item, l) : item.name;
 
   return (
     <div
-      onClick={disabled ? undefined : onToggle}
+      title={cardTitle}
+      {...(manualLocked
+        ? { role: "button" as const, tabIndex: 0, "aria-label": cardTitle }
+        : {})}
+      onClick={() => {
+        if (manualLocked) {
+          onLockedItemClick?.(item);
+          return;
+        }
+        if (!cannotSelect) onToggle();
+      }}
+      onKeyDown={
+        manualLocked
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onLockedItemClick?.(item);
+              }
+            }
+          : undefined
+      }
       className={`group relative flex h-full min-h-[248px] flex-col overflow-visible rounded-xl border transition-all ${
         manualLocked
-          ? "cursor-not-allowed border-zinc-800/50 bg-zinc-900/70 opacity-90"
-          : disabled
+          ? "cursor-not-allowed border-zinc-700/45 bg-zinc-900/80 opacity-[0.62] contrast-[0.92] [filter:grayscale(32%)] focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50"
+          : cannotSelect
             ? "border-zinc-800/40 bg-zinc-900/40 opacity-50"
             : isSelected
               ? "border-amber-500/60 bg-zinc-800/80 ring-1 ring-amber-500/40 cursor-pointer"
@@ -1232,7 +1288,7 @@ function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn, lang: l
 
       {/* Top: Name + Wear */}
       <div className="shrink-0 flex flex-col items-center gap-1 px-2 pt-2">
-        <p className="w-full truncate text-center text-[11px] font-semibold leading-tight" style={{ color: nameColor }} title={item.name}>
+        <p className="w-full truncate text-center text-[11px] font-semibold leading-tight" style={{ color: nameColor }}>
           {item.name}
         </p>
         {item.wear && (
@@ -1240,13 +1296,6 @@ function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn, lang: l
             {item.wear}
           </span>
         )}
-        {manualLocked ? (
-          <p className="line-clamp-2 w-full px-1 text-center text-[9px] leading-tight text-orange-200/95">
-            {item.tradeLockUntil
-              ? `${t("lockedUntilPrefix", l)} ${formatLockUntilDate(item.tradeLockUntil, l)}`
-              : t("lockedNoDate", l)}
-          </p>
-        ) : null}
         {showAssetId ? (
           <div
             className="flex w-full max-w-full items-center gap-1 px-0.5"
@@ -1290,7 +1339,12 @@ function ItemCard({ item, isSelected, onToggle, showAssetId, fmt: fmtFn, lang: l
           </>
         ) : (
           /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={item.iconUrl} alt={item.name} className="h-[72px] w-[72px] object-contain transition-transform group-hover:scale-105" loading="lazy" />
+          <img
+            src={item.iconUrl}
+            alt={item.name}
+            className={`h-[72px] w-[72px] object-contain ${manualLocked ? "" : "transition-transform group-hover:scale-105"}`}
+            loading="lazy"
+          />
         )}
 
         {isLocked && (
