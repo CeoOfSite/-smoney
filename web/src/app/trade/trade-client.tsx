@@ -1862,12 +1862,16 @@ function ItemCard({ item, isSelected, onToggle, onLockedItemClick, showAssetId, 
 
         {item.floatValue != null ? (
           <div className="flex min-h-[22px] flex-col justify-end gap-0.5">
-            <p className="text-center text-[8px] leading-none text-zinc-500">
-              <span className="text-zinc-600">F </span>
-              <span className="font-mono font-medium tabular-nums text-zinc-200">
+            <div className="flex w-full items-baseline justify-between gap-1 text-[8px] leading-none">
+              <span className="shrink-0 font-mono font-medium tabular-nums text-zinc-200">
                 {item.floatValue.toFixed(item.floatValue < 0.01 ? 6 : 4)}
               </span>
-            </p>
+              {item.wear ? (
+                <span className="min-w-0 max-w-[58%] truncate text-right text-[7px] font-medium text-zinc-400" title={item.wear}>
+                  {item.wear}
+                </span>
+              ) : null}
+            </div>
             <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-700/80 ring-1 ring-zinc-900/80">
               <div
                 className="h-full min-w-px rounded-full"
