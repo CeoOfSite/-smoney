@@ -7,10 +7,12 @@ export function UserBanToggle({
   steamId,
   isBanned,
   currentAdminSteamId,
+  onChanged,
 }: {
   steamId: string;
   isBanned: boolean;
   currentAdminSteamId: string;
+  onChanged?: () => void;
 }) {
   const router = useRouter();
   const [banned, setBanned] = useState(isBanned);
@@ -35,6 +37,7 @@ export function UserBanToggle({
         return;
       }
       setBanned(next);
+      onChanged?.();
       router.refresh();
     } finally {
       setLoading(false);

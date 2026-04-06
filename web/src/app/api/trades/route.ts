@@ -1,6 +1,7 @@
 /**
  * POST /api/trades — create a new trade request.
- * GET /api/trades — list current user's trades (newest first).
+ * GET /api/trades — list current user's trades (newest first), or admin paginated list:
+ *   ?page=1&limit=20&status=all|pending|accepted|… (admin only; returns { data, total, page, totalPages }).
  *
  * Body: { guestItems: string[], ownerItems: string[] } — arrays of assetIds.
  * Server re-resolves prices; snapshots names/float/wear/price on TradeItem rows.
@@ -8,6 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
+import { tradeWhereFromAdminStatusTab } from "@/lib/admin-trade-list";
 import { buildOwnerPublicInventoryItems } from "@/lib/build-owner-public-inventory";
 import { getCached, setCache } from "@/lib/inventory-cache";
 import { centsCountedInTradeTotal, resolvePrice } from "@/lib/pricempire";
@@ -20,13 +22,57 @@ import type { NormalizedItem } from "@/lib/steam-inventory";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   if (user.isBanned) {
     return NextResponse.json({ error: "banned" }, { status: 403 });
+  }
+
+  const url = new URL(request.url);
+  const pageRaw = url.searchParams.get("page");
+  const limitRaw = url.searchParams.get("limit");
+  const adminPaginated = user.isAdmin && (pageRaw !== null || limitRaw !== null);
+
+  if (adminPaginated) {
+    const page = Math.max(1, parseInt(pageRaw ?? "1", 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(limitRaw ?? "20", 10) || 20));
+    const statusTab = url.searchParams.get("status") ?? "all";
+    const where = tradeWhereFromAdminStatusTab(statusTab);
+
+    const [total, rows] = await Promise.all([
+      prisma.trade.count({ where }),
+      prisma.trade.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          items: true,
+          creator: { select: { steamId: true, displayName: true } },
+        },
+      }),
+    ]);
+
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    const data = rows.map((tr) => {
+      const sum = serializeTradeSummary(tr);
+      return {
+        ...sum,
+        creatorSteamId: tr.creator.steamId,
+        creatorDisplayName: tr.creator.displayName,
+      };
+    });
+
+    return NextResponse.json({
+      data,
+      total,
+      page,
+      totalPages,
+    });
   }
 
   const rows = await prisma.trade.findMany({

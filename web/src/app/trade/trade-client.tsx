@@ -101,6 +101,7 @@ const SORT_KEYS = [
 ] as const;
 
 const ITEMS_PER_PAGE = 30;
+const SKELETON_CARD_COUNT = 15;
 
 const CURRENCIES = [
   { code: "USD" as const, symbol: "$", flag: "🇺🇸", rate: DEFAULT_FX_RATES.USD },
@@ -144,7 +145,9 @@ export default function TradePageClient({
 } = {}) {
   const [ownerItems, setOwnerItems] = useState<InventoryItem[]>([]);
   const [myItems, setMyItems] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [ownerInventoryLoading, setOwnerInventoryLoading] = useState(true);
+  const [myInventoryLoading, setMyInventoryLoading] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tradeSubmitError, setTradeSubmitError] = useState<string | null>(null);
   const [tradeUrl, setTradeUrl] = useState("");
@@ -341,7 +344,7 @@ export default function TradePageClient({
 
   // ------ loaders ------
   const loadOwner = useCallback(async () => {
-    const res = await fetch("/api/inventory/owner");
+    const res = await fetch("/api/inventory/owner", { credentials: "include" });
     const data = await res.json().catch(() => null);
     if (res.ok && data?.items) {
       setOwnerItems(data.items);
@@ -352,7 +355,7 @@ export default function TradePageClient({
   }, [lang]);
 
   const loadMyInventory = useCallback(async () => {
-    const res = await fetch("/api/inventory/me");
+    const res = await fetch("/api/inventory/me", { credentials: "include" });
     const data = await res.json().catch(() => null);
     if (res.ok && data?.items) {
       setMyItems(data.items);
@@ -364,24 +367,53 @@ export default function TradePageClient({
   }, [lang]);
 
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
-      await loadOwner();
-      const meRes = await fetch("/api/auth/me");
-      if (meRes.ok) {
-        const meData = await meRes.json();
-        if (meData.user) {
-          setIsLoggedIn(true);
-          const tradeRes = await fetch("/api/profile/trade-url");
-          if (tradeRes.ok) {
-            const td = await tradeRes.json();
-            setHasTradeUrl(td.hasTradeUrl);
+      setOwnerInventoryLoading(true);
+      try {
+        await loadOwner();
+      } finally {
+        if (!cancelled) setOwnerInventoryLoading(false);
+      }
+    })();
+
+    (async () => {
+      const meRes = await fetch("/api/auth/me", { credentials: "include" });
+      if (cancelled) return;
+      if (!meRes.ok) {
+        setAuthReady(true);
+        return;
+      }
+      const meData = (await meRes.json().catch(() => null)) as { user?: unknown } | null;
+      if (cancelled) return;
+      if (meData?.user) {
+        setIsLoggedIn(true);
+        const tradeRes = await fetch("/api/profile/trade-url", { credentials: "include" });
+        let hasUrl = false;
+        if (tradeRes.ok) {
+          const td = (await tradeRes.json().catch(() => null)) as { hasTradeUrl?: boolean; tradeUrl?: string | null } | null;
+          if (td) {
+            hasUrl = !!td.hasTradeUrl;
+            setHasTradeUrl(hasUrl);
             setTradeUrl(td.tradeUrl ?? "");
           }
-          await loadMyInventory();
+        }
+        if (hasUrl) {
+          setMyInventoryLoading(true);
+          try {
+            await loadMyInventory();
+          } finally {
+            if (!cancelled) setMyInventoryLoading(false);
+          }
         }
       }
-      setLoading(false);
+      if (!cancelled) setAuthReady(true);
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [loadOwner, loadMyInventory]);
 
   const saveTradeUrl = useCallback(async () => {
@@ -394,13 +426,18 @@ export default function TradePageClient({
     if (res.ok) {
       setHasTradeUrl(true);
       setEditingTradeUrl(false);
-      const myRes = await fetch("/api/inventory/me");
-      if (myRes.ok) {
-        const d = await myRes.json();
-        setMyItems(d.items ?? []);
-        if (typeof d.refreshCooldownRemainingMs === "number" && d.refreshCooldownRemainingMs > 0) {
-          setMyCooldown(Math.ceil(d.refreshCooldownRemainingMs / 1000));
+      setMyInventoryLoading(true);
+      try {
+        const myRes = await fetch("/api/inventory/me", { credentials: "include" });
+        if (myRes.ok) {
+          const d = await myRes.json();
+          setMyItems(d.items ?? []);
+          if (typeof d.refreshCooldownRemainingMs === "number" && d.refreshCooldownRemainingMs > 0) {
+            setMyCooldown(Math.ceil(d.refreshCooldownRemainingMs / 1000));
+          }
         }
+      } finally {
+        setMyInventoryLoading(false);
       }
     } else {
       const err = await res.json().catch(() => null);
@@ -567,10 +604,6 @@ export default function TradePageClient({
     return [...sorted.filter((i) => !i.locked), ...sorted.filter((i) => i.locked)];
   }
 
-  if (loading) {
-    return <div className="flex min-h-screen items-center justify-center bg-[#0d0d0f] text-zinc-500">{t("loading", lang)}</div>;
-  }
-
   return (
     <div className="scheme-dark flex h-screen min-w-0 flex-col overflow-x-hidden overflow-y-hidden bg-[#0d0d0f] text-zinc-100">
       {/* Header */}
@@ -656,7 +689,25 @@ export default function TradePageClient({
           />
 
           {/* Content — each branch gets flex-1 + overflow-y-auto so it always fills the column */}
-          {!isLoggedIn ? (
+          {!authReady ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <PanelHeader
+                search={mySearch}
+                onSearch={setMySearch}
+                sort={mySort}
+                onSort={setMySort}
+                prefix="my"
+                onRefresh={() => doRefresh("my", setMyRefreshing, setMyCooldown, loadMyInventory)}
+                refreshing={myRefreshing}
+                cooldown={myCooldown}
+                lang={lang}
+                controlsDisabled
+              />
+              <div className="trade-scroll flex-1 overflow-y-auto overflow-x-hidden px-1.5 py-1 sm:px-2 sm:py-1.5">
+                <ItemGridSkeleton lang={lang} />
+              </div>
+            </div>
+          ) : !isLoggedIn ? (
             <div className="trade-scroll flex flex-1 flex-col items-center justify-start gap-4 overflow-y-auto px-6 pb-6 pt-4 text-center">
               <div className="text-5xl opacity-20">🎮</div>
               <p className="max-w-xs text-sm text-zinc-500">{t("loginPrompt", lang)}</p>
@@ -706,16 +757,31 @@ export default function TradePageClient({
           ) : (
             <div className="flex min-h-0 flex-1 flex-col">
               <PanelHeader
-                search={mySearch} onSearch={setMySearch}
-                sort={mySort} onSort={setMySort}
+                search={mySearch}
+                onSearch={setMySearch}
+                sort={mySort}
+                onSort={setMySort}
                 prefix="my"
                 onRefresh={() => doRefresh("my", setMyRefreshing, setMyCooldown, loadMyInventory)}
-                refreshing={myRefreshing} cooldown={myCooldown}
+                refreshing={myRefreshing}
+                cooldown={myCooldown}
                 tradeUrlAction={() => setEditingTradeUrl(true)}
                 lang={lang}
+                controlsDisabled={myInventoryLoading}
               />
               <div className="trade-scroll flex-1 overflow-y-auto overflow-x-hidden px-1.5 py-1 sm:px-2 sm:py-1.5">
-                <ItemGrid items={filterMy(myItems, mySearch, mySort)} side="guest" selected={selectedMy} onToggle={(id) => toggle(setSelectedMy, id)} fmt={fmt} lang={lang} />
+                {myInventoryLoading ? (
+                  <ItemGridSkeleton lang={lang} />
+                ) : (
+                  <ItemGrid
+                    items={filterMy(myItems, mySearch, mySort)}
+                    side="guest"
+                    selected={selectedMy}
+                    onToggle={(id) => toggle(setSelectedMy, id)}
+                    fmt={fmt}
+                    lang={lang}
+                  />
+                )}
               </div>
             </div>
           )}
@@ -899,24 +965,32 @@ export default function TradePageClient({
           />
 
           <PanelHeader
-            search={ownerSearch} onSearch={setOwnerSearch}
-            sort={ownerSort} onSort={setOwnerSort}
+            search={ownerSearch}
+            onSearch={setOwnerSearch}
+            sort={ownerSort}
+            onSort={setOwnerSort}
             prefix="owner"
             onRefresh={() => doRefresh("owner", setOwnerRefreshing, setOwnerCooldown, loadOwner)}
-            refreshing={ownerRefreshing} cooldown={ownerCooldown}
+            refreshing={ownerRefreshing}
+            cooldown={ownerCooldown}
             lang={lang}
+            controlsDisabled={ownerInventoryLoading}
           />
           <div className="trade-scroll flex-1 overflow-y-auto overflow-x-hidden px-1.5 py-1 sm:px-2 sm:py-1.5">
-                <ItemGrid
-                  items={filterOwner(ownerItems, ownerSearch, ownerSort)}
-                  side="owner"
-                  selected={selectedOwner}
-                  onToggle={(id) => toggle(setSelectedOwner, id)}
-                  onLockedItemClick={showLockedTapNotice}
-                  showAssetId={isAdmin}
-                  fmt={fmt}
-                  lang={lang}
-                />
+            {ownerInventoryLoading ? (
+              <ItemGridSkeleton lang={lang} />
+            ) : (
+              <ItemGrid
+                items={filterOwner(ownerItems, ownerSearch, ownerSort)}
+                side="owner"
+                selected={selectedOwner}
+                onToggle={(id) => toggle(setSelectedOwner, id)}
+                onLockedItemClick={showLockedTapNotice}
+                showAssetId={isAdmin}
+                fmt={fmt}
+                lang={lang}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -1240,13 +1314,16 @@ function ReqLine({ done, text, issue, compact }: { done: boolean; text: string; 
 function PanelHeader({
   search, onSearch, sort, onSort, prefix,
   onRefresh, refreshing, cooldown, tradeUrlAction, lang: l,
+  controlsDisabled,
 }: {
   search: string; onSearch: (v: string) => void;
   sort: string; onSort: (v: string) => void;
   prefix: string;
   onRefresh: () => void; refreshing: boolean; cooldown: number;
   tradeUrlAction?: () => void; lang: LangCode;
+  controlsDisabled?: boolean;
 }) {
+  const frozen = !!controlsDisabled;
   return (
     <div className="border-b border-zinc-800/50 bg-[#0f0f11] px-2.5 py-1.5 sm:px-3 sm:py-2">
       <div className="flex items-center gap-2">
@@ -1255,16 +1332,18 @@ function PanelHeader({
           <input
             type="text"
             placeholder={t("searchPlaceholder", l)}
-            className="w-full rounded-lg border border-zinc-800/60 bg-zinc-900/60 py-1.5 pl-8 pr-3 text-xs text-zinc-200 placeholder-zinc-600 focus:border-amber-700/40 focus:outline-none"
+            className="w-full rounded-lg border border-zinc-800/60 bg-zinc-900/60 py-1.5 pl-8 pr-3 text-xs text-zinc-200 placeholder-zinc-600 focus:border-amber-700/40 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             value={search}
             onChange={(e) => onSearch(e.target.value)}
+            disabled={frozen}
           />
         </div>
         <select
           aria-label={`${prefix}-sort`}
-          className="rounded-lg border border-zinc-800/60 bg-zinc-900/60 px-2 py-1.5 text-[11px] text-zinc-400 focus:outline-none"
+          className="rounded-lg border border-zinc-800/60 bg-zinc-900/60 px-2 py-1.5 text-[11px] text-zinc-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
           value={sort}
           onChange={(e) => onSort(e.target.value)}
+          disabled={frozen}
         >
           {SORT_KEYS.map((s) => <option key={s.key} value={s.key}>{t(s.i18n, l)}</option>)}
         </select>
@@ -1275,8 +1354,8 @@ function PanelHeader({
           <button
             type="button"
             onClick={onRefresh}
-            disabled={refreshing || cooldown > 0}
-            className={`rounded-lg border p-1.5 text-xs transition-colors ${cooldown > 0 || refreshing ? "border-zinc-800 text-zinc-700 cursor-not-allowed" : "border-zinc-800/60 text-zinc-500 hover:text-zinc-300"}`}
+            disabled={frozen || refreshing || cooldown > 0}
+            className={`rounded-lg border p-1.5 text-xs transition-colors ${frozen || cooldown > 0 || refreshing ? "border-zinc-800 text-zinc-700 cursor-not-allowed" : "border-zinc-800/60 text-zinc-500 hover:text-zinc-300"}`}
             aria-label={cooldown > 0 ? `${t("nextRefreshIn", l)} ${formatRefreshCooldown(cooldown, l)}` : t("refreshInventory", l)}
           >
             <span className={refreshing ? "inline-block animate-spin" : ""}>↻</span>
@@ -1293,8 +1372,49 @@ function PanelHeader({
           )}
         </div>
         {tradeUrlAction && (
-          <button onClick={tradeUrlAction} className="rounded-lg border border-zinc-800/60 p-1.5 text-[10px] text-zinc-600 hover:text-zinc-400" title={t("changeTradeUrl", l)}>⚙</button>
+          <button
+            type="button"
+            onClick={tradeUrlAction}
+            disabled={frozen}
+            className="rounded-lg border border-zinc-800/60 p-1.5 text-[10px] text-zinc-600 hover:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-40"
+            title={t("changeTradeUrl", l)}
+          >
+            ⚙
+          </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Item grid skeleton (initial inventory load)
+// ---------------------------------------------------------------------------
+
+function ItemGridSkeleton({ lang: l }: { lang: LangCode }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={t("loading", l)}
+      className="space-y-2"
+    >
+      <span className="sr-only">{t("loading", l)}</span>
+      <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 sm:gap-1.5 lg:grid-cols-4 xl:grid-cols-5">
+        {Array.from({ length: SKELETON_CARD_COUNT }, (_, i) => (
+          <div
+            key={i}
+            className="flex min-h-[228px] flex-col rounded-xl border border-zinc-800/40 bg-zinc-900/35 p-2 sm:min-h-[236px]"
+            style={{ animationDelay: `${i * 45}ms` }}
+          >
+            <div className="mx-auto h-3 w-[85%] max-w-[160px] animate-pulse rounded bg-zinc-800/70" />
+            <div className="mx-auto mt-2 h-3.5 w-[45%] animate-pulse rounded-full bg-zinc-800/50" />
+            <div className="flex flex-1 items-center justify-center py-3">
+              <div className="h-16 w-16 animate-pulse rounded-lg bg-zinc-800/55 sm:h-[72px] sm:w-[72px]" />
+            </div>
+            <div className="mx-auto h-3 w-[55%] animate-pulse rounded bg-zinc-800/65" />
+          </div>
+        ))}
       </div>
     </div>
   );
