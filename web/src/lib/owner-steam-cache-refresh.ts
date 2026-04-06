@@ -7,7 +7,7 @@ export async function refreshOwnerSteamItemsInCache(ownerSteamId: string): Promi
   const result = await fetchOwnerInventory();
   if (!result.ok) return false;
   const items = filterJunkFromOwnerSteamItems(result.items);
-  setCache(ownerSteamId, items);
+  await setCache(ownerSteamId, items);
   const locked = items.filter((i) => !i.tradable).length;
   console.log(
     `[owner-steam-cache-refresh] refreshed ${result.items.length} → ${items.length} (tradable=false: ${locked})`,

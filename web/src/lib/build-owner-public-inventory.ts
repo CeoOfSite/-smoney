@@ -21,7 +21,7 @@ export async function buildOwnerPublicInventoryItems(): Promise<BuildOwnerPublic
   const ownerSteamId = process.env.OWNER_STEAM_ID;
   if (!ownerSteamId) return { ok: false, error: "missing_owner_steam_id" };
 
-  const swr = getOwnerCachedStaleWhileRevalidate(ownerSteamId);
+  const swr = await getOwnerCachedStaleWhileRevalidate(ownerSteamId);
   let steamCacheWasStale = false;
   let items: NormalizedItem[] | null = null;
 
@@ -32,7 +32,7 @@ export async function buildOwnerPublicInventoryItems(): Promise<BuildOwnerPublic
     const result = await fetchOwnerInventory();
     if (!result.ok) return { ok: false, error: result.error };
     items = filterJunkFromOwnerSteamItems(result.items);
-    setCache(ownerSteamId, items);
+    await setCache(ownerSteamId, items);
     const locked = items.filter((i) => !i.tradable).length;
     console.log(
       `[build-owner-public-inventory] loaded ${result.items.length} → ${items.length} (junk filtered; tradable=false: ${locked})`,

@@ -1,6 +1,6 @@
 /**
  * POST /api/inventory/refresh — force-refresh inventory.
- * Owner/store: 1 refresh per 2 minutes (OWNER_STEAM_ID).
+ * Owner/store: admins only; on success replaces cache (on failure old cache kept). Cooldown 2 min.
  * User "my" inventory: 1 refresh per 2 hours per Steam account.
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -42,28 +42,30 @@ export async function POST(request: NextRequest) {
   const side = body.side ?? "owner";
 
   if (side === "owner") {
+    if (!user?.isAdmin) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+
     const ownerSteamId = process.env.OWNER_STEAM_ID;
     if (!ownerSteamId) {
       return NextResponse.json({ error: "owner_not_configured" }, { status: 500 });
     }
 
-    const cooldown = refreshCooldownRemainingOwner(ownerSteamId);
+    const cooldown = await refreshCooldownRemainingOwner(ownerSteamId);
     if (cooldown > 0) {
       return NextResponse.json(rateLimitBody(cooldown), { status: 429 });
     }
-
-    invalidateCache(ownerSteamId);
-    markOwnerRefreshed(ownerSteamId);
 
     const result = await fetchOwnerInventory();
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 502 });
     }
-    setCache(ownerSteamId, filterJunkFromOwnerSteamItems(result.items));
+    await setCache(ownerSteamId, filterJunkFromOwnerSteamItems(result.items));
+    await markOwnerRefreshed(ownerSteamId);
     return NextResponse.json({
       ok: true,
       count: result.items.length,
-      refreshCooldownRemainingMs: refreshCooldownRemainingOwner(ownerSteamId),
+      refreshCooldownRemainingMs: await refreshCooldownRemainingOwner(ownerSteamId),
       refreshCooldownTotalMs: OWNER_REFRESH_COOLDOWN_MS,
     });
   }
@@ -73,13 +75,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const cooldown = refreshCooldownRemainingUser(user.steamId);
+  const cooldown = await refreshCooldownRemainingUser(user.steamId);
   if (cooldown > 0) {
     return NextResponse.json(rateLimitBody(cooldown), { status: 429 });
   }
 
-  invalidateCache(user.steamId);
-  markUserRefreshed(user.steamId);
+  await invalidateCache(user.steamId);
+  await markUserRefreshed(user.steamId);
 
   const isOwner = user.steamId === process.env.OWNER_STEAM_ID;
   if (isOwner) {
@@ -87,11 +89,11 @@ export async function POST(request: NextRequest) {
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 502 });
     }
-    setCache(user.steamId, filterJunkFromOwnerSteamItems(result.items));
+    await setCache(user.steamId, filterJunkFromOwnerSteamItems(result.items));
     return NextResponse.json({
       ok: true,
       count: result.items.length,
-      refreshCooldownRemainingMs: refreshCooldownRemainingUser(user.steamId),
+      refreshCooldownRemainingMs: await refreshCooldownRemainingUser(user.steamId),
       refreshCooldownTotalMs: USER_REFRESH_COOLDOWN_MS,
     });
   }
@@ -104,11 +106,11 @@ export async function POST(request: NextRequest) {
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 502 });
   }
-  setCache(user.steamId, result.items);
+  await setCache(user.steamId, result.items);
   return NextResponse.json({
     ok: true,
     count: result.items.length,
-    refreshCooldownRemainingMs: refreshCooldownRemainingUser(user.steamId),
+    refreshCooldownRemainingMs: await refreshCooldownRemainingUser(user.steamId),
     refreshCooldownTotalMs: USER_REFRESH_COOLDOWN_MS,
   });
 }

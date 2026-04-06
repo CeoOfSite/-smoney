@@ -21,7 +21,7 @@ export async function GET() {
 
   const isOwner = user.steamId === process.env.OWNER_STEAM_ID;
 
-  let items: NormalizedItem[] | null = getCached(user.steamId);
+  let items: NormalizedItem[] | null = await getCached(user.steamId);
 
   if (!items) {
     if (isOwner) {
@@ -43,7 +43,7 @@ export async function GET() {
       }
       items = result.items;
     }
-    setCache(user.steamId, items);
+    await setCache(user.steamId, items);
   }
 
   const side = isOwner ? "owner" : "guest";
@@ -52,7 +52,7 @@ export async function GET() {
   return NextResponse.json({
     items: enriched,
     count: enriched.length,
-    refreshCooldownRemainingMs: refreshCooldownRemainingUser(user.steamId),
+    refreshCooldownRemainingMs: await refreshCooldownRemainingUser(user.steamId),
   });
 }
 

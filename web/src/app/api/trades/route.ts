@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let guestInv: NormalizedItem[] | null = getCached(user.steamId);
+  let guestInv: NormalizedItem[] | null = await getCached(user.steamId);
   if (!guestInv) {
     if (!user.tradeUrl) {
       return NextResponse.json(
@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
       );
     }
     guestInv = res.items;
-    setCache(user.steamId, guestInv);
+    await setCache(user.steamId, guestInv);
   }
 
   const ownerMap = new Map<string, OwnerPublicInventoryRow>(

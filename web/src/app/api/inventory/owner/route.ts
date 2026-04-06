@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
       limit,
       hasMore,
       manualLockCount: built.manualLockCount,
-      refreshCooldownRemainingMs: refreshCooldownRemainingOwner(ownerSteamId),
+      refreshCooldownRemainingMs: await refreshCooldownRemainingOwner(ownerSteamId),
     });
   } catch (e) {
     console.error("[/api/inventory/owner] enrichWithPrices error:", e);
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
       limit,
       hasMore: offset + fallback.length < total,
       manualLockCount: built.manualLockCount,
-      refreshCooldownRemainingMs: refreshCooldownRemainingOwner(ownerSteamId),
+      refreshCooldownRemainingMs: await refreshCooldownRemainingOwner(ownerSteamId),
     });
   }
 }

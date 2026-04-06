@@ -4,7 +4,11 @@ import { warmOwnerInventoryCache } from "@/lib/owner-inventory-warm";
 
 export const dynamic = "force-dynamic";
 
-/** External cron (e.g. Render cron job): GET with Authorization: Bearer CRON_SECRET */
+/**
+ * Owner inventory warm (same as instrumentation interval). Use on serverless where setInterval
+ * does not persist — schedule hourly (or match OWNER_INVENTORY_WARM_MS).
+ * GET with header: Authorization: Bearer CRON_SECRET
+ */
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
