@@ -765,7 +765,7 @@ export default function TradePageClient({
         {/* 3-Column Layout — internal scroll via .trade-scroll; footer stays in document flow below */}
         <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,39%)_minmax(0,22%)_minmax(0,39%)] grid-rows-[minmax(0,1fr)] items-stretch overflow-hidden">
         {/* ─── LEFT: Your Inventory ─── */}
-        <div className="flex min-h-0 min-w-0 flex-col border-r border-zinc-800/50">
+        <div className="flex min-h-0 min-w-0 flex-col justify-start border-r border-zinc-800/50">
           {/* Selected items strip */}
           <SelectedStrip
             label={t("youGive", lang)}
@@ -781,7 +781,7 @@ export default function TradePageClient({
 
           {/* Content — each branch gets flex-1 + overflow-y-auto so it always fills the column */}
           {!authReady ? (
-            <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-col">
               <PanelHeader
                 search={mySearch}
                 onSearch={setMySearch}
@@ -794,12 +794,12 @@ export default function TradePageClient({
                 lang={lang}
                 controlsDisabled
               />
-              <div className="trade-scroll flex-1 overflow-y-auto overflow-x-hidden px-1.5 py-1 sm:px-2 sm:py-1.5">
+              <div className="trade-scroll trade-inventory-scroll px-1.5 py-1 sm:px-2 sm:py-1.5">
                 <ItemGridSkeleton lang={lang} />
               </div>
             </div>
           ) : !isLoggedIn ? (
-            <div className="trade-scroll flex flex-1 flex-col items-center justify-start gap-4 overflow-y-auto px-6 pb-6 pt-4 text-center">
+            <div className="trade-scroll trade-inventory-scroll flex flex-col items-center justify-start gap-4 px-6 pb-6 pt-4 text-center">
               <div className="text-5xl opacity-20">🎮</div>
               <p className="max-w-xs text-sm text-zinc-500">{t("loginPrompt", lang)}</p>
               <a href="/api/auth/steam" className="rounded-lg bg-amber-600 px-6 py-2 text-sm font-semibold text-white hover:bg-amber-500">
@@ -807,7 +807,7 @@ export default function TradePageClient({
               </a>
             </div>
           ) : !hasTradeUrl || editingTradeUrl ? (
-            <div className="trade-scroll flex-1 overflow-y-auto">
+            <div className="trade-scroll trade-inventory-scroll">
               <div className="flex flex-col items-center gap-4 px-6 pb-6 pt-4">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-600/20 text-2xl">🔗</div>
                 <h3 className="text-base font-bold text-zinc-100">
@@ -846,7 +846,7 @@ export default function TradePageClient({
               </div>
             </div>
           ) : (
-            <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-col">
               <PanelHeader
                 search={mySearch}
                 onSearch={setMySearch}
@@ -860,7 +860,7 @@ export default function TradePageClient({
                 lang={lang}
                 controlsDisabled={myInventoryLoading}
               />
-              <div className="trade-scroll flex-1 overflow-y-auto overflow-x-hidden px-1.5 py-1 sm:px-2 sm:py-1.5">
+              <div className="trade-scroll trade-inventory-scroll px-1.5 py-1 sm:px-2 sm:py-1.5">
                 {myInventoryLoading ? (
                   <ItemGridSkeleton lang={lang} />
                 ) : (
@@ -1041,7 +1041,7 @@ export default function TradePageClient({
         </div>
 
         {/* ─── RIGHT: Store Inventory ─── */}
-        <div className="flex min-h-0 min-w-0 flex-col border-l border-zinc-800/50">
+        <div className="flex min-h-0 min-w-0 flex-col justify-start border-l border-zinc-800/50">
           <SelectedStrip
             label={t("youGet", lang)}
             sublabel={t("platformInventory", lang)}
@@ -1068,7 +1068,7 @@ export default function TradePageClient({
             controlsDisabled={ownerInventoryLoading}
             showRefreshButton={isAdmin}
           />
-          <div className="trade-scroll flex-1 overflow-y-auto overflow-x-hidden px-1.5 py-1 sm:px-2 sm:py-1.5">
+          <div className="trade-scroll trade-inventory-scroll px-1.5 py-1 sm:px-2 sm:py-1.5">
             {ownerInventoryLoading ? (
               <ItemGridSkeleton lang={lang} />
             ) : (
