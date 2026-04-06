@@ -7,10 +7,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
 import {
+  computeOwnerManualTradeLockDiagnostics,
   extractManualTradeLockEntries,
+  getOwnerManualTradeLockRule,
   resolveOwnerManualTradeLockFilePath,
 } from "@/lib/owner-manual-trade-lock";
 import { prisma } from "@/lib/prisma";
+import { fetchOwnerInventory } from "@/lib/steam-inventory";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +25,7 @@ async function assertAdmin() {
   return user;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   if (!(await assertAdmin())) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
@@ -31,7 +34,7 @@ export async function GET() {
     where: { id: "singleton" },
   });
 
-  return NextResponse.json({
+  const base = {
     loadedFromDb: !!row,
     assetIdCount: row?.assetIds.length ?? 0,
     classInstanceKeyCount: row?.classInstanceKeys.length ?? 0,
@@ -41,7 +44,23 @@ export async function GET() {
     sampleAssetIds: row ? row.assetIds.slice(0, 12) : [],
     sampleClassInstanceKeys: row ? row.classInstanceKeys.slice(0, 12) : [],
     fileFallbackPath: resolveOwnerManualTradeLockFilePath(),
-  });
+    classInstanceOnlyEnv: process.env.OWNER_MANUAL_TRADE_LOCK_CLASS_INSTANCE_ONLY ?? "",
+  };
+
+  if (request.nextUrl.searchParams.get("diagnose") === "1") {
+    const inv = await fetchOwnerInventory();
+    if (!inv.ok) {
+      return NextResponse.json(
+        { ...base, diagnoseError: inv.error, diagnose: null },
+        { status: 502 },
+      );
+    }
+    const rule = await getOwnerManualTradeLockRule();
+    const diagnose = computeOwnerManualTradeLockDiagnostics(inv.items, rule);
+    return NextResponse.json({ ...base, diagnose });
+  }
+
+  return NextResponse.json(base);
 }
 
 export async function PUT(request: NextRequest) {

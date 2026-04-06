@@ -11,6 +11,18 @@ interface LockMeta {
   sampleAssetIds: string[];
   sampleClassInstanceKeys: string[];
   fileFallbackPath: string | null;
+  classInstanceOnlyEnv?: string;
+}
+
+interface DiagnoseResult {
+  inventoryItemCount: number;
+  matchedByAssetIdCount: number;
+  matchedByClassInstanceKeyCount: number;
+  matchedClassButNotAssetIdCount: number;
+  wouldLockCount: number;
+  sampleLockedNames: string[];
+  sampleRuleAssetIdsMissingInInventory: string[];
+  sampleRuleClassKeysMissingInInventory: string[];
 }
 
 export default function AdminLockedSkinsPage() {
@@ -20,6 +32,9 @@ export default function AdminLockedSkinsPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const [diagnose, setDiagnose] = useState<DiagnoseResult | null>(null);
+  const [diagnoseErr, setDiagnoseErr] = useState("");
+  const [diagnoseLoading, setDiagnoseLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -41,6 +56,8 @@ export default function AdminLockedSkinsPage() {
           ? (data.sampleClassInstanceKeys as string[])
           : [],
         fileFallbackPath: typeof data.fileFallbackPath === "string" ? data.fileFallbackPath : null,
+        classInstanceOnlyEnv:
+          typeof data.classInstanceOnlyEnv === "string" ? data.classInstanceOnlyEnv : undefined,
       });
     } else {
       setErr("Не удалось загрузить статус");
@@ -96,6 +113,27 @@ export default function AdminLockedSkinsPage() {
     setSaving(false);
   }
 
+  async function runDiagnose() {
+    setDiagnoseLoading(true);
+    setDiagnose(null);
+    setDiagnoseErr("");
+    const res = await fetch("/api/admin/owner-trade-lock?diagnose=1");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setDiagnoseErr(
+        typeof data.diagnoseError === "string"
+          ? `Инвентарь магазина: ${data.diagnoseError}`
+          : data.error ?? "Ошибка диагностики",
+      );
+      setDiagnoseLoading(false);
+      return;
+    }
+    if (data.diagnose && typeof data.diagnose === "object") {
+      setDiagnose(data.diagnose as DiagnoseResult);
+    }
+    setDiagnoseLoading(false);
+  }
+
   function onPickFile(f: File | null) {
     if (!f) return;
     const r = new FileReader();
@@ -114,8 +152,8 @@ export default function AdminLockedSkinsPage() {
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           Вставьте сырой JSON из браузера (Network → ответ Steam): и отформатированный, и минифицированный подходят.
           Логин Steam на сервере не нужен. Список действует только на инвентарь <strong className="text-zinc-800 dark:text-zinc-200">магазина</strong> (колонка «Вы получаете»), тот же Steam ID, что в <code className="rounded bg-zinc-200 px-1 text-xs dark:bg-zinc-800">OWNER_STEAM_ID</code>.
-          Не включайте на Render <code className="rounded bg-zinc-200 px-1 text-xs dark:bg-zinc-800">OWNER_INVENTORY_CONTEXT_ID=16</code>: с датацентра Steam почти не отдаёт контекст 16 (пустой JSON / private / лимиты), инвентарь магазина пропадёт. Браузер с вашей сессией и сервер — разные условия. Сайт грузит магазин с контекста{" "}
-          <strong>2</strong>; вставленный JSON (в т.ч. с <code className="text-xs">contextid 16</code> в файле) сопоставляем по <code className="text-xs">assetid</code> и <code className="text-xs">classid + instanceid</code> с этим списком. Если лок не цепляется — чаще всего выгрузка с другого Steam, чем <code className="text-xs">OWNER_STEAM_ID</code>.
+          Не включайте на Render <code className="rounded bg-zinc-200 px-1 text-xs dark:bg-zinc-800">OWNER_INVENTORY_CONTEXT_ID=16</code>: с датацентра Steam почти не отдаёт контекст 16 (пустой JSON / private / лимиты), инвентарь магазина пропадёт. Браузер с вашей сессией и сервер — разные условия.           Сайт грузит магазин с контекста <strong>2</strong>. Сначала матчим <code className="text-xs">classid+instanceid</code>, потом <code className="text-xs">assetid</code> (у разных контекстов Steam asset id часто разный). Если в диагностике совпадений 0 — JSON не тот аккаунт или пары class+instance в контексте 2 другие. Опционально на Render:{" "}
+          <code className="rounded bg-zinc-200 px-1 text-xs dark:bg-zinc-800">OWNER_MANUAL_TRADE_LOCK_CLASS_INSTANCE_ONLY=true</code> — не использовать asset id из списка, только пары class+instance (если в БД они заполнены).
           После обновления сайта нажмите «Сохранить в БД» ещё раз с тем же JSON. Список в БД перекрывает файл{" "}
           <code className="rounded bg-zinc-200 px-1 text-xs dark:bg-zinc-800">data/owner-manual-trade-lock.json</code>.
         </p>
@@ -163,6 +201,55 @@ export default function AdminLockedSkinsPage() {
           ) : (
             <p className="mt-2 text-xs text-zinc-500">Файл трейдлока на сервере не найден (или путь не задан).</p>
           )}
+          {meta.classInstanceOnlyEnv ? (
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+              Env <code className="text-[10px]">OWNER_MANUAL_TRADE_LOCK_CLASS_INSTANCE_ONLY</code>={meta.classInstanceOnlyEnv}
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-zinc-500">
+              <code className="text-[10px]">OWNER_MANUAL_TRADE_LOCK_CLASS_INSTANCE_ONLY</code> не задан (учитываются и asset id, и class+instance).
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={diagnoseLoading}
+            onClick={runDiagnose}
+            className="mt-3 rounded-lg border border-zinc-400 bg-zinc-100 px-3 py-2 text-xs font-medium text-zinc-900 hover:bg-zinc-200 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+          >
+            {diagnoseLoading ? "Запрос к Steam…" : "Диагностика: совпадения с живым инвентарём магазина"}
+          </button>
+        </div>
+      ) : null}
+
+      {diagnoseErr ? <p className="text-sm text-red-600 dark:text-red-400">{diagnoseErr}</p> : null}
+      {diagnose ? (
+        <div className="rounded-2xl border border-blue-900/40 bg-blue-950/30 p-5 text-sm dark:border-blue-800/50">
+          <p className="font-semibold text-blue-200">Результат диагностики (сейчас с Steam)</p>
+          <ul className="mt-2 list-inside list-disc space-y-1 text-zinc-300">
+            <li>Предметов в инвентаре магазина: {diagnose.inventoryItemCount}</li>
+            <li>Совпало по asset id: {diagnose.matchedByAssetIdCount}</li>
+            <li>Совпало по classid+instanceid: {diagnose.matchedByClassInstanceKeyCount}</li>
+            <li>
+              Совпало по class+instance, но asset id из JSON другой: {diagnose.matchedClassButNotAssetIdCount}{" "}
+              <span className="text-zinc-500">(типично для JSON с context 16 vs инвентарь context 2)</span>
+            </li>
+            <li className="font-medium text-amber-200">Будет помечено как locked: {diagnose.wouldLockCount}</li>
+          </ul>
+          {diagnose.sampleLockedNames.length > 0 ? (
+            <p className="mt-2 text-xs text-zinc-400">Примеры имён: {diagnose.sampleLockedNames.join(" · ")}</p>
+          ) : null}
+          {diagnose.sampleRuleAssetIdsMissingInInventory.length > 0 ? (
+            <p className="mt-2 break-all font-mono text-[10px] text-red-300">
+              Asset id из списка, которых нет в инвентаре (первые):{" "}
+              {diagnose.sampleRuleAssetIdsMissingInInventory.join(", ")}
+            </p>
+          ) : null}
+          {diagnose.sampleRuleClassKeysMissingInInventory.length > 0 ? (
+            <p className="mt-2 break-all font-mono text-[10px] text-red-300">
+              Пары class_instance из списка, которых нет в инвентаре (первые):{" "}
+              {diagnose.sampleRuleClassKeysMissingInInventory.join(", ")}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

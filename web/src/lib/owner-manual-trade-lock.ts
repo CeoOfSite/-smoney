@@ -24,13 +24,79 @@ const EMPTY_RULE: OwnerManualTradeLockRule = {
   classInstanceKeys: new Set(),
 };
 
+/** If true, ignore asset ids from the rule (JSON from another Steam context often has different assetid). */
+export function useClassInstanceOnlyManualLock(): boolean {
+  const v = process.env.OWNER_MANUAL_TRADE_LOCK_CLASS_INSTANCE_ONLY?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
 export function itemMatchesOwnerManualLock(item: NormalizedItem, rule: OwnerManualTradeLockRule): boolean {
-  // Steam JSON often has numeric assetid/classid/instanceid; DB stores strings — Set.has is strict.
-  const aid = String(item.assetId);
-  if (rule.assetIds.has(aid)) return true;
-  if (rule.classInstanceKeys.size === 0) return false;
   const key = `${String(item.classId)}_${String(item.instanceId)}`;
-  return rule.classInstanceKeys.has(key);
+  // Prefer class+instance first: stable across context 2 vs 16 when Steam keeps the same pair.
+  if (rule.classInstanceKeys.size > 0 && rule.classInstanceKeys.has(key)) return true;
+  if (useClassInstanceOnlyManualLock()) return false;
+  return rule.assetIds.has(String(item.assetId));
+}
+
+export type OwnerManualTradeLockDiagnostics = {
+  inventoryItemCount: number;
+  matchedByAssetIdCount: number;
+  matchedByClassInstanceKeyCount: number;
+  /** class+instance matched but asset id not in rule (typical for context 16 JSON vs context 2 inventory) */
+  matchedClassButNotAssetIdCount: number;
+  wouldLockCount: number;
+  sampleLockedNames: string[];
+  /** Rule asset ids (first 8) not present on any loaded inventory row */
+  sampleRuleAssetIdsMissingInInventory: string[];
+  /** Rule class_instance keys (first 8) not present on any loaded inventory row */
+  sampleRuleClassKeysMissingInInventory: string[];
+};
+
+export function computeOwnerManualTradeLockDiagnostics(
+  items: NormalizedItem[],
+  rule: OwnerManualTradeLockRule,
+): OwnerManualTradeLockDiagnostics {
+  let matchedByAssetIdCount = 0;
+  let matchedByClassInstanceKeyCount = 0;
+  let matchedClassButNotAssetIdCount = 0;
+  const wouldLockAssetIds = new Set<string>();
+
+  for (const item of items) {
+    const aid = String(item.assetId);
+    const key = `${String(item.classId)}_${String(item.instanceId)}`;
+    const byAsset = rule.assetIds.has(aid);
+    const byClass = rule.classInstanceKeys.size > 0 && rule.classInstanceKeys.has(key);
+    if (byAsset) matchedByAssetIdCount++;
+    if (byClass) matchedByClassInstanceKeyCount++;
+    if (byClass && !byAsset) matchedClassButNotAssetIdCount++;
+    const effectiveLock = useClassInstanceOnlyManualLock() ? byClass : byAsset || byClass;
+    if (effectiveLock) wouldLockAssetIds.add(aid);
+  }
+
+  const invAssets = new Set(items.map((i) => String(i.assetId)));
+  const invCi = new Set(items.map((i) => `${String(i.classId)}_${String(i.instanceId)}`));
+
+  const sampleRuleAssetIdsMissingInInventory = [...rule.assetIds].filter((a) => !invAssets.has(a)).slice(0, 8);
+
+  const sampleRuleClassKeysMissingInInventory = [...rule.classInstanceKeys]
+    .filter((k) => !invCi.has(k))
+    .slice(0, 8);
+
+  const sampleLockedNames = items
+    .filter((i) => wouldLockAssetIds.has(String(i.assetId)))
+    .slice(0, 10)
+    .map((i) => i.name);
+
+  return {
+    inventoryItemCount: items.length,
+    matchedByAssetIdCount,
+    matchedByClassInstanceKeyCount,
+    matchedClassButNotAssetIdCount,
+    wouldLockCount: wouldLockAssetIds.size,
+    sampleLockedNames,
+    sampleRuleAssetIdsMissingInInventory,
+    sampleRuleClassKeysMissingInInventory,
+  };
 }
 
 /** From pasted JSON: asset ids + classid_instanceid keys (from assets[] entries). */
