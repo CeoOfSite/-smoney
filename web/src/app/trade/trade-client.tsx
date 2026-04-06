@@ -1847,15 +1847,18 @@ function ItemCard({ item, isSelected, onToggle, onLockedItemClick, showAssetId, 
           </div>
         ) : null}
 
-        <p
-          className="line-clamp-2 min-h-[26px] w-full text-center text-[8px] font-semibold leading-snug text-zinc-200 transition-opacity duration-200 ease-out opacity-100 group-hover:opacity-0"
-          style={{ color: nameColor }}
-        >
-          {item.name}
-          {item.phaseLabel && !item.name.toLowerCase().includes(item.phaseLabel.toLowerCase()) ? (
-            <span className={`font-bold ${phaseTextColor(item.phaseLabel)}`}> · {item.phaseLabel}</span>
-          ) : null}
-        </p>
+        {/* Bottom-align name in fixed band so short titles sit on the “red” line (just above float), 2–3 lines grow upward (green/blue). */}
+        <div className="flex min-h-[40px] w-full flex-col justify-end transition-opacity duration-200 ease-out opacity-100 group-hover:opacity-0">
+          <p
+            className="line-clamp-3 w-full text-center text-[8px] font-semibold leading-snug text-zinc-200"
+            style={{ color: nameColor }}
+          >
+            {item.name}
+            {item.phaseLabel && !item.name.toLowerCase().includes(item.phaseLabel.toLowerCase()) ? (
+              <span className={`font-bold ${phaseTextColor(item.phaseLabel)}`}> · {item.phaseLabel}</span>
+            ) : null}
+          </p>
+        </div>
 
         {item.floatValue != null ? (
           <div className="flex min-h-[22px] flex-col justify-end gap-0.5">
