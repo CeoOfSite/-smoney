@@ -281,6 +281,39 @@ const T: Translations = {
   hoursShort: { ru: "ч", en: "h", zh: "时" },
   minutesShort: { ru: "мин", en: "min", zh: "分" },
   secondsShort: { ru: "с", en: "s", zh: "秒" },
+
+  chatOpen: { ru: "Чат с поддержкой", en: "Support chat", zh: "客服聊天" },
+  chatTitle: { ru: "Поддержка", en: "Support", zh: "客服" },
+  chatLoginPrompt: {
+    ru: "Войдите через Steam для общения",
+    en: "Sign in with Steam to chat",
+    zh: "请通过 Steam 登录后聊天",
+  },
+  chatPlaceholder: { ru: "Сообщение…", en: "Message…", zh: "消息…" },
+  chatSend: { ru: "Отправить", en: "Send", zh: "发送" },
+  chatEmpty: { ru: "Напишите первое сообщение", en: "Send the first message", zh: "发送第一条消息" },
+  chatLoading: { ru: "Загрузка…", en: "Loading…", zh: "加载中…" },
+  chatError: { ru: "Не удалось отправить", en: "Failed to send", zh: "发送失败" },
+  chatRateLimited: { ru: "Подождите пару секунд", en: "Wait a few seconds", zh: "请稍候几秒" },
+  chatNewBadge: { ru: "Новое сообщение", en: "New message", zh: "新消息" },
+
+  adminChatNav: { ru: "Чаты", en: "Chats", zh: "聊天" },
+  adminChatTitle: { ru: "Чаты с пользователями", en: "User chats", zh: "用户聊天" },
+  adminChatStartSteam: { ru: "Steam ID / ссылка", en: "Steam ID / URL", zh: "Steam ID / 链接" },
+  adminChatStartBtn: { ru: "Начать чат", en: "Start chat", zh: "开始聊天" },
+  adminChatNoConversations: { ru: "Пока нет диалогов", en: "No conversations yet", zh: "暂无对话" },
+  adminChatLastMessage: { ru: "Последнее", en: "Last", zh: "最后" },
+  adminChatUnread: { ru: "непрочит.", en: "unread", zh: "未读" },
+  adminChatYou: { ru: "Вы", en: "You", zh: "您" },
+  adminChatSelect: { ru: "Выберите диалог", en: "Select a conversation", zh: "选择对话" },
+  adminChatBack: { ru: "К списку", en: "Back to list", zh: "返回列表" },
+  adminChatUserNotFound: {
+    ru: "Пользователь не найден (нужен хотя бы один вход на сайт)",
+    en: "User not found — they must sign in at least once",
+    zh: "未找到用户（需至少登录过一次）",
+  },
+  adminChatInvalidSteam: { ru: "Неверный Steam ID", en: "Invalid Steam ID", zh: "Steam ID 无效" },
+  backToAdmin: { ru: "К админке", en: "Back to admin", zh: "返回后台" },
 };
 
 export function t(key: string, lang: LangCode): string {

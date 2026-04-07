@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { OWNER_REFRESH_COOLDOWN_MS, USER_REFRESH_COOLDOWN_MS } from "@/lib/inventory-refresh-limits";
 import {
@@ -1577,12 +1577,13 @@ function ItemGridSkeleton({ lang: l }: { lang: LangCode }) {
       className="space-y-2"
     >
       <span className="sr-only">{t("loading", l)}</span>
-      <div className="grid grid-cols-2 gap-0.5 sm:grid-cols-3 sm:gap-1 lg:grid-cols-4 xl:grid-cols-5">
+      <div
+        className={`grid grid-cols-2 gap-0.5 sm:grid-cols-3 sm:gap-1 lg:grid-cols-4 xl:grid-cols-5 ${styles.skeletonGrid}`}
+      >
         {Array.from({ length: SKELETON_CARD_COUNT }, (_, i) => (
           <div
             key={i}
             className="flex aspect-square w-full min-w-0 flex-col overflow-hidden rounded-lg border border-zinc-800/40 bg-zinc-900/35"
-            style={{ animationDelay: `${i * 45}ms` }}
           >
             <div className="flex min-h-0 flex-[7] items-center justify-center p-1">
               <div className="h-[70%] w-[70%] max-h-[120px] max-w-[120px] animate-pulse rounded-md bg-zinc-800/55" />
@@ -1705,6 +1706,52 @@ function RarityBar({ color }: { color: string }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => { ref.current?.style.setProperty("--rc", color); }, [color]);
   return <div ref={ref} className={`absolute inset-x-0 bottom-0 h-[2px] ${styles.rarityBar}`} />;
+}
+
+function floatBarColor(f: number): string {
+  if (f < 0.07) return "#22c55e";
+  if (f < 0.15) return "#84cc16";
+  if (f < 0.38) return "#eab308";
+  if (f < 0.45) return "#f97316";
+  return "#ef4444";
+}
+
+/** Visible fill on 0–1 wear scale (raw % is tiny for FN floats and looked “missing” on narrow cards). */
+function floatBarFillPercent(f: number): number {
+  if (f == null || Number.isNaN(f) || f <= 0) return 0;
+  const raw = Math.min(f * 100, 100);
+  return Math.max(raw, 14);
+}
+
+/** Steam rarity hex from API; applied via CSS var so JSX has no `style={{…}}` (Edge no-inline-styles). */
+function SteamRarityText({
+  color,
+  className,
+  children,
+}: {
+  color: string;
+  className: string;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useLayoutEffect(() => {
+    ref.current?.style.setProperty("--item-name-color", color);
+  }, [color]);
+  return (
+    <p ref={ref} className={`${styles.itemNameDynamic} ${className}`}>
+      {children}
+    </p>
+  );
+}
+
+function FloatBarFillInner({ floatValue }: { floatValue: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    ref.current.style.setProperty("--float-pct", `${floatBarFillPercent(floatValue)}%`);
+    ref.current.style.setProperty("--float-bg", floatBarColor(floatValue));
+  }, [floatValue]);
+  return <div ref={ref} className={`h-full min-w-px rounded-full ${styles.floatBarFill}`} />;
 }
 
 function InspectInGameButton({ href, lang: l }: { href: string; lang: LangCode }) {
@@ -1855,15 +1902,15 @@ function ItemCard({ item, isSelected, onToggle, onLockedItemClick, showAssetId, 
           aria-hidden
         />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[24] max-h-[40%] overflow-hidden px-1.5 pb-1 pt-3 opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100">
-          <p
-            className="break-words text-center text-[8px] font-semibold leading-snug text-zinc-50 drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)] line-clamp-4"
-            style={{ color: nameColor }}
+          <SteamRarityText
+            color={nameColor}
+            className="break-words text-center text-[8px] font-semibold leading-snug drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)] line-clamp-4"
           >
             {item.name}
             {item.phaseLabel && !item.name.toLowerCase().includes(item.phaseLabel.toLowerCase()) ? (
               <span className={`font-bold ${phaseTextColor(item.phaseLabel)}`}> · {item.phaseLabel}</span>
             ) : null}
-          </p>
+          </SteamRarityText>
         </div>
 
         {isLocked && (
@@ -1928,15 +1975,15 @@ function ItemCard({ item, isSelected, onToggle, onLockedItemClick, showAssetId, 
 
         {/* Bottom-align name in fixed band so short titles sit on the “red” line (just above float), 2–3 lines grow upward (green/blue). */}
         <div className="flex min-h-[40px] w-full flex-col justify-end transition-opacity duration-200 ease-out opacity-100 group-hover:opacity-0">
-          <p
-            className="line-clamp-3 w-full text-center text-[8px] font-semibold leading-snug text-zinc-200"
-            style={{ color: nameColor }}
+          <SteamRarityText
+            color={nameColor}
+            className="line-clamp-3 w-full text-center text-[8px] font-semibold leading-snug"
           >
             {item.name}
             {item.phaseLabel && !item.name.toLowerCase().includes(item.phaseLabel.toLowerCase()) ? (
               <span className={`font-bold ${phaseTextColor(item.phaseLabel)}`}> · {item.phaseLabel}</span>
             ) : null}
-          </p>
+          </SteamRarityText>
         </div>
 
         {item.floatValue != null ? (
@@ -1952,13 +1999,7 @@ function ItemCard({ item, isSelected, onToggle, onLockedItemClick, showAssetId, 
               ) : null}
             </div>
             <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-700/80 ring-1 ring-zinc-900/80">
-              <div
-                className="h-full min-w-px rounded-full"
-                style={{
-                  width: `${floatBarFillPercent(item.floatValue)}%`,
-                  backgroundColor: floatBarColor(item.floatValue),
-                }}
-              />
+              <FloatBarFillInner floatValue={item.floatValue} />
             </div>
           </div>
         ) : (
@@ -2002,21 +2043,6 @@ function phaseTextColor(phase: string): string {
   }
 }
 
-function floatBarColor(f: number): string {
-  if (f < 0.07) return "#22c55e";
-  if (f < 0.15) return "#84cc16";
-  if (f < 0.38) return "#eab308";
-  if (f < 0.45) return "#f97316";
-  return "#ef4444";
-}
-
-/** Visible fill on 0–1 wear scale (raw % is tiny for FN floats and looked “missing” on narrow cards). */
-function floatBarFillPercent(f: number): number {
-  if (f == null || Number.isNaN(f) || f <= 0) return 0;
-  const raw = Math.min(f * 100, 100);
-  return Math.max(raw, 14);
-}
-
 function TradeManualChecklistItemRow({
   item,
   fmt: fmtFn,
@@ -2054,13 +2080,7 @@ function TradeManualChecklistItemRow({
         </div>
         {item.floatValue != null ? (
           <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-zinc-700/80 ring-1 ring-zinc-950/80">
-            <div
-              className="h-full min-w-px rounded-full"
-              style={{
-                width: `${floatBarFillPercent(item.floatValue)}%`,
-                backgroundColor: floatBarColor(item.floatValue),
-              }}
-            />
+            <FloatBarFillInner floatValue={item.floatValue} />
           </div>
         ) : null}
         <p className="mt-1 text-[11px] font-bold tabular-nums text-amber-400">{fmtFn(item.priceUsd)}</p>

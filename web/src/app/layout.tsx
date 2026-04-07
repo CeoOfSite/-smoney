@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
+import { ChatDock } from "@/app/chat-dock";
 import { CookieConsent } from "@/app/cookie-consent";
 
 import "./globals.css";
@@ -32,6 +33,7 @@ export default function RootLayout({
     >
       <body className="flex min-h-screen flex-col">
         {children}
+        <ChatDock />
         <CookieConsent />
       </body>
     </html>

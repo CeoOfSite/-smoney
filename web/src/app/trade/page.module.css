@@ -1,3 +1,59 @@
 .rarityBar {
   background-color: var(--rc);
 }
+
+/* Stagger skeleton pulses by card index (keep in sync with SKELETON_CARD_COUNT). */
+.skeletonGrid > :nth-child(1) :global(.animate-pulse) {
+  animation-delay: 0ms;
+}
+.skeletonGrid > :nth-child(2) :global(.animate-pulse) {
+  animation-delay: 45ms;
+}
+.skeletonGrid > :nth-child(3) :global(.animate-pulse) {
+  animation-delay: 90ms;
+}
+.skeletonGrid > :nth-child(4) :global(.animate-pulse) {
+  animation-delay: 135ms;
+}
+.skeletonGrid > :nth-child(5) :global(.animate-pulse) {
+  animation-delay: 180ms;
+}
+.skeletonGrid > :nth-child(6) :global(.animate-pulse) {
+  animation-delay: 225ms;
+}
+.skeletonGrid > :nth-child(7) :global(.animate-pulse) {
+  animation-delay: 270ms;
+}
+.skeletonGrid > :nth-child(8) :global(.animate-pulse) {
+  animation-delay: 315ms;
+}
+.skeletonGrid > :nth-child(9) :global(.animate-pulse) {
+  animation-delay: 360ms;
+}
+.skeletonGrid > :nth-child(10) :global(.animate-pulse) {
+  animation-delay: 405ms;
+}
+.skeletonGrid > :nth-child(11) :global(.animate-pulse) {
+  animation-delay: 450ms;
+}
+.skeletonGrid > :nth-child(12) :global(.animate-pulse) {
+  animation-delay: 495ms;
+}
+.skeletonGrid > :nth-child(13) :global(.animate-pulse) {
+  animation-delay: 540ms;
+}
+.skeletonGrid > :nth-child(14) :global(.animate-pulse) {
+  animation-delay: 585ms;
+}
+.skeletonGrid > :nth-child(15) :global(.animate-pulse) {
+  animation-delay: 630ms;
+}
+
+.itemNameDynamic {
+  color: var(--item-name-color, #e4e4e7);
+}
+
+.floatBarFill {
+  width: var(--float-pct, 0%);
+  background-color: var(--float-bg, #64748b);
+}
