@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   }
 
   const derivedSteamId = steamId64FromPartner(parsed.partner);
-  if (derivedSteamId !== user.steamId) {
+  if (derivedSteamId !== user.steamId && !user.isAdmin) {
     return NextResponse.json(
       {
         error: "not_your_trade_url",

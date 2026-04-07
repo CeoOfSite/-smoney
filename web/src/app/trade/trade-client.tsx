@@ -951,7 +951,13 @@ export default function TradePageClient({
                   {hasTradeUrl ? t("updateTradeUrl", lang) : t("pasteTradeUrl", lang)}
                 </h3>
                 <p className="max-w-xs text-center text-xs text-zinc-500">
-                  {t("tradeUrlHint", lang)} <strong className="text-zinc-400">{t("onlyYourOwn", lang)}</strong>
+                  {isAdmin ? (
+                    t("tradeUrlAdminHint", lang)
+                  ) : (
+                    <>
+                      {t("tradeUrlHint", lang)} <strong className="text-zinc-400">{t("onlyYourOwn", lang)}</strong>
+                    </>
+                  )}
                 </p>
                 <div className="flex w-full max-w-sm flex-col gap-2">
                   <input
@@ -1006,6 +1012,7 @@ export default function TradePageClient({
                     side="guest"
                     selected={selectedMy}
                     onToggle={(id) => toggle(setSelectedMy, id)}
+                    showAssetId={isAdmin}
                     fmt={fmt}
                     lang={lang}
                   />
@@ -1896,15 +1903,12 @@ function ItemGrid({
 }) {
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const ownerRendersAll = side === "owner";
 
   useEffect(() => {
-    if (ownerRendersAll) return;
     setVisibleCount(ITEMS_PER_PAGE);
-  }, [items.length, ownerRendersAll]);
+  }, [items.length]);
 
   useEffect(() => {
-    if (ownerRendersAll) return;
     const el = sentinelRef.current;
     if (!el) return;
     const obs = new IntersectionObserver(
@@ -1917,14 +1921,14 @@ function ItemGrid({
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [items.length, ownerRendersAll]);
+  }, [items.length]);
 
   if (items.length === 0) {
     return <div className="flex h-40 items-center justify-center text-sm text-zinc-600">{t("noItems", l)}</div>;
   }
 
-  const visible = ownerRendersAll ? items : items.slice(0, visibleCount);
-  const hasMore = !ownerRendersAll && visibleCount < items.length;
+  const visible = items.slice(0, visibleCount);
+  const hasMore = visibleCount < items.length;
 
   return (
     <>
@@ -1936,7 +1940,7 @@ function ItemGrid({
             isSelected={!item.locked && selected.has(item.assetId)}
             onToggle={() => onToggle(item.assetId)}
             onLockedItemClick={side === "owner" ? onLockedItemClick : undefined}
-            showAssetId={!!showAssetId && side === "owner"}
+            showAssetId={!!showAssetId}
             fmt={fmtFn}
             lang={l}
           />
@@ -1947,7 +1951,7 @@ function ItemGrid({
           {t("loadingItems", l)} ({visible.length} / {items.length})
         </div>
       )}
-      {!hasMore && !ownerRendersAll && items.length > ITEMS_PER_PAGE && (
+      {!hasMore && items.length > ITEMS_PER_PAGE && (
         <div className="py-4 text-center text-[11px] text-zinc-600">
           {t("allItemsLoaded", l)} ({items.length})
         </div>

@@ -51,6 +51,11 @@ const T: Translations = {
     zh: "需要您的Steam交易链接才能加载库存。",
   },
   onlyYourOwn: { ru: "только свою", en: "your own only", zh: "仅限自己的" },
+  tradeUrlAdminHint: {
+    ru: "Вы вошли как администратор: можно вставить trade-ссылку любого Steam-аккаунта — слева загрузится этот инвентарь. Ссылка сохранится в вашем профиле; для обычных обменов снова укажите свою.",
+    en: "Signed in as admin: you may paste any user’s Steam trade URL — their inventory loads on the left. The URL is saved on your profile; switch back to your own link for normal trading.",
+    zh: "管理员：可粘贴任意用户的 Steam 交易链接以在左侧加载其库存。链接会保存到您的资料；日常交易请改回您自己的链接。",
+  },
   saveAndLoad: { ru: "Сохранить и загрузить инвентарь", en: "Save & load inventory", zh: "保存并加载库存" },
   cancel: { ru: "Отмена", en: "Cancel", zh: "取消" },
   whereTradeUrl: { ru: "Где найти trade-ссылку? →", en: "Where to find trade URL? →", zh: "在哪里找到交易链接？→" },
