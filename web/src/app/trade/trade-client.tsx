@@ -157,7 +157,9 @@ export default function TradePageClient({
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   const [tradeSubmitModalOpen, setTradeSubmitModalOpen] = useState(false);
-  const [tradeSubmitModalPhase, setTradeSubmitModalPhase] = useState<"pick" | "site_done">("pick");
+  const [tradeSubmitModalPhase, setTradeSubmitModalPhase] = useState<"pick" | "site_done" | "manual_checklist">("pick");
+  const [manualChecklistGuest, setManualChecklistGuest] = useState<InventoryItem[]>([]);
+  const [manualChecklistOwner, setManualChecklistOwner] = useState<InventoryItem[]>([]);
   const [tradeModalBusy, setTradeModalBusy] = useState(false);
   const [tradeModalError, setTradeModalError] = useState<string | null>(null);
   const [tradeModalCreatedId, setTradeModalCreatedId] = useState<string | null>(null);
@@ -275,6 +277,8 @@ export default function TradePageClient({
     setTradeModalError(null);
     setTradeModalCreatedId(null);
     setTradeModalBusy(false);
+    setManualChecklistGuest([]);
+    setManualChecklistOwner([]);
     tradeModalSnapshotRef.current = null;
   }, []);
 
@@ -294,12 +298,22 @@ export default function TradePageClient({
   const handleTradeModalManual = useCallback(async () => {
     setTradeModalBusy(true);
     setTradeModalError(null);
+    const snap = tradeModalSnapshotRef.current;
     const r = await executeTradeSubmit();
     setTradeModalBusy(false);
     if (!r.ok) {
       setTradeModalError(r.error);
       return;
     }
+    const guestResolved = (snap?.guest ?? [])
+      .map((id) => myItems.find((i) => i.assetId === id))
+      .filter((x): x is InventoryItem => !!x);
+    const ownerResolved = (snap?.owner ?? [])
+      .map((id) => ownerItems.find((i) => i.assetId === id))
+      .filter((x): x is InventoryItem => !!x);
+    setManualChecklistGuest(guestResolved);
+    setManualChecklistOwner(ownerResolved);
+    setTradeModalCreatedId(r.tradeId && r.tradeId.length > 0 ? r.tradeId : null);
     setSelectedMy(new Set());
     setSelectedOwner(new Set());
     if (r.ownerTradeUrl) {
@@ -307,8 +321,8 @@ export default function TradePageClient({
     } else {
       setTradeSubmitError(t("tradeSubmitNoStoreUrl", lang));
     }
-    closeTradeSubmitModal();
-  }, [closeTradeSubmitModal, executeTradeSubmit, lang]);
+    setTradeSubmitModalPhase("manual_checklist");
+  }, [executeTradeSubmit, lang, myItems, ownerItems]);
 
   const handleTradeModalSite = useCallback(async () => {
     setTradeModalBusy(true);
@@ -328,11 +342,13 @@ export default function TradePageClient({
   useEffect(() => {
     if (!tradeSubmitModalOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeTradeSubmitModal();
+      if (e.key !== "Escape") return;
+      if (tradeSubmitModalPhase === "manual_checklist") return;
+      closeTradeSubmitModal();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [tradeSubmitModalOpen, closeTradeSubmitModal]);
+  }, [tradeSubmitModalOpen, tradeSubmitModalPhase, closeTradeSubmitModal]);
 
   useEffect(() => {
     if (!tradeSubmitModalOpen) return;
@@ -1122,32 +1138,45 @@ export default function TradePageClient({
       </footer>
 
       {tradeSubmitModalOpen ? (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6">
           <button
             type="button"
             className="absolute inset-0 bg-black/75 backdrop-blur-[2px]"
             aria-label={t("tradeSubmitBackdropClose", lang)}
-            onClick={closeTradeSubmitModal}
+            onClick={() => {
+              if (tradeSubmitModalPhase === "manual_checklist") return;
+              closeTradeSubmitModal();
+            }}
           />
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="trade-submit-modal-title"
-            className="relative z-[201] w-full max-w-md overflow-hidden rounded-2xl border border-zinc-700/80 bg-[#141416] shadow-2xl shadow-black/60"
+            className={`relative z-[201] w-full overflow-hidden rounded-2xl border border-zinc-700/80 bg-[#141416] shadow-2xl shadow-black/60 ${
+              tradeSubmitModalPhase === "manual_checklist" ? "max-h-[min(92dvh,840px)] max-w-3xl overflow-y-auto" : "max-w-md"
+            }`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3 sm:px-5">
-              <h2 id="trade-submit-modal-title" className="text-sm font-semibold text-zinc-100 sm:text-base">
-                {tradeSubmitModalPhase === "pick" ? t("tradeSubmitModalTitle", lang) : t("tradeSubmitSuccessHeading", lang)}
+              <h2 id="trade-submit-modal-title" className="min-w-0 pr-2 text-sm font-semibold text-zinc-100 sm:text-base">
+                {tradeSubmitModalPhase === "pick"
+                  ? t("tradeSubmitModalTitle", lang)
+                  : tradeSubmitModalPhase === "manual_checklist"
+                    ? `${t("tradeSubmitManualOrderPrefix", lang)}${tradeModalCreatedId ? ` #${tradeModalCreatedId}` : ""}`
+                    : t("tradeSubmitSuccessHeading", lang)}
               </h2>
-              <button
-                type="button"
-                onClick={closeTradeSubmitModal}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-                aria-label={t("tradeSubmitModalClose", lang)}
-              >
-                ×
-              </button>
+              {tradeSubmitModalPhase !== "manual_checklist" ? (
+                <button
+                  type="button"
+                  onClick={closeTradeSubmitModal}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+                  aria-label={t("tradeSubmitModalClose", lang)}
+                >
+                  ×
+                </button>
+              ) : (
+                <span className="w-8 shrink-0" aria-hidden />
+              )}
             </div>
 
             <div className="px-4 py-4 sm:px-5 sm:py-5">
@@ -1190,6 +1219,56 @@ export default function TradePageClient({
                     <p className="mt-4 text-center text-xs text-zinc-500">{t("sending", lang)}</p>
                   ) : null}
                 </>
+              ) : tradeSubmitModalPhase === "manual_checklist" ? (
+                <div className="space-y-4">
+                  <p className="text-xs leading-relaxed text-zinc-400 sm:text-sm">{t("tradeSubmitManualChecklistLead", lang)}</p>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="min-w-0 rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                      <p className="text-xs font-bold text-zinc-200">{t("tradeSubmitManualYourItemsHeading", lang)}</p>
+                      <p className="mt-0.5 text-[10px] text-zinc-500">{t("tradeSubmitManualYourItemsSub", lang)}</p>
+                      <div className="mt-3 max-h-[min(38vh,320px)] space-y-2 overflow-y-auto pr-0.5">
+                        {manualChecklistGuest.length === 0 ? (
+                          <p className="text-[11px] text-zinc-600">—</p>
+                        ) : (
+                          manualChecklistGuest.map((it) => (
+                            <TradeManualChecklistItemRow key={it.assetId} item={it} fmt={fmt} lang={lang} />
+                          ))
+                        )}
+                      </div>
+                    </div>
+                    <div className="min-w-0 rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                      <p className="text-xs font-bold text-zinc-200">{t("tradeSubmitManualStoreItemsHeading", lang)}</p>
+                      <p className="mt-0.5 text-[10px] text-zinc-500">{t("tradeSubmitManualStoreItemsSub", lang)}</p>
+                      <div className="mt-3 max-h-[min(38vh,320px)] space-y-2 overflow-y-auto pr-0.5">
+                        {manualChecklistOwner.length === 0 ? (
+                          <p className="text-[11px] text-zinc-600">—</p>
+                        ) : (
+                          manualChecklistOwner.map((it) => (
+                            <TradeManualChecklistItemRow key={it.assetId} item={it} fmt={fmt} lang={lang} />
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-center text-[11px] leading-snug text-zinc-500">{t("tradeSubmitManualConfirmHint", lang)}</p>
+                  <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-center">
+                    {tradeModalCreatedId ? (
+                      <Link
+                        href={`/trades/${tradeModalCreatedId}`}
+                        className="inline-flex justify-center rounded-lg border border-zinc-600 bg-zinc-800/80 px-4 py-2.5 text-center text-sm font-medium text-zinc-200 hover:border-zinc-500 hover:bg-zinc-800"
+                      >
+                        {t("tradeSubmitManualViewHistory", lang)}
+                      </Link>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={closeTradeSubmitModal}
+                      className="inline-flex justify-center rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-500"
+                    >
+                      {t("tradeSubmitManualConfirmBtn", lang)}
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <div className="space-y-4 text-center">
                   <p className="text-sm leading-relaxed text-zinc-200 sm:text-base">{t("tradeSubmitSiteDone", lang)}</p>
@@ -1936,5 +2015,57 @@ function floatBarFillPercent(f: number): number {
   if (f == null || Number.isNaN(f) || f <= 0) return 0;
   const raw = Math.min(f * 100, 100);
   return Math.max(raw, 14);
+}
+
+function TradeManualChecklistItemRow({
+  item,
+  fmt: fmtFn,
+  lang: l,
+}: {
+  item: InventoryItem;
+  fmt: (cents: number) => string;
+  lang: LangCode;
+}) {
+  const phaseInName =
+    item.phaseLabel && item.name.toLowerCase().includes(item.phaseLabel.toLowerCase());
+  return (
+    <div className="flex gap-2 rounded-lg border border-zinc-800/70 bg-[#0d0d0f] p-2">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={item.iconUrl} alt="" className="h-11 w-11 shrink-0 object-contain" loading="lazy" />
+      <div className="min-w-0 flex-1">
+        <p className="line-clamp-2 text-left text-[10px] font-semibold leading-snug text-zinc-100">{item.name}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] text-zinc-500">
+          {item.wear ? <span className="text-zinc-400">{item.wear}</span> : null}
+          {item.floatValue != null ? (
+            <span className="font-mono tabular-nums text-zinc-300">
+              {item.floatValue.toFixed(item.floatValue < 0.01 ? 6 : 4)}
+            </span>
+          ) : null}
+          {item.phaseLabel && !phaseInName ? (
+            <span className={`font-medium ${phaseTextColor(item.phaseLabel)}`}>
+              {t("tradeSubmitPattern", l)}: {item.phaseLabel}
+            </span>
+          ) : null}
+          {item.stickers.length > 0 ? (
+            <span className="text-zinc-600">
+              {t("stickers", l)}: {item.stickers.length}
+            </span>
+          ) : null}
+        </div>
+        {item.floatValue != null ? (
+          <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-zinc-700/80 ring-1 ring-zinc-950/80">
+            <div
+              className="h-full min-w-px rounded-full"
+              style={{
+                width: `${floatBarFillPercent(item.floatValue)}%`,
+                backgroundColor: floatBarColor(item.floatValue),
+              }}
+            />
+          </div>
+        ) : null}
+        <p className="mt-1 text-[11px] font-bold tabular-nums text-amber-400">{fmtFn(item.priceUsd)}</p>
+      </div>
+    </div>
+  );
 }
 

@@ -95,6 +95,49 @@ const T: Translations = {
   tradeSubmitBackdropClose: { ru: "Закрыть окно", en: "Close dialog", zh: "关闭对话框" },
   tradeSubmitSuccessHeading: { ru: "Готово", en: "Success", zh: "完成" },
 
+  tradeSubmitManualOrderPrefix: { ru: "Заявка", en: "Order", zh: "订单" },
+  tradeSubmitManualChecklistLead: {
+    ru: "Заявка создана и уже в истории. В новой вкладке открыта ссылка на обмен магазина — добавьте в предложение ровно те предметы, что указаны ниже.",
+    en: "Your request is saved and appears in history. The store trade link opened in a new tab — add exactly the items listed below to your Steam offer.",
+    zh: "申请已保存并显示在历史记录中。商店交易链接已在新标签页打开——请在 Steam 报价中加入下列物品。",
+  },
+  tradeSubmitManualYourItemsHeading: {
+    ru: "Ваши предметы",
+    en: "Your items",
+    zh: "您的物品",
+  },
+  tradeSubmitManualYourItemsSub: {
+    ru: "Вы отдаёте — добавьте в Steam:",
+    en: "You give — add these in Steam:",
+    zh: "您提供——请在 Steam 中加入：",
+  },
+  tradeSubmitManualStoreItemsHeading: {
+    ru: "Предметы с сайта",
+    en: "Items from the site",
+    zh: "网站物品",
+  },
+  tradeSubmitManualStoreItemsSub: {
+    ru: "Вы получаете:",
+    en: "You receive:",
+    zh: "您获得：",
+  },
+  tradeSubmitPattern: { ru: "Паттерн", en: "Pattern", zh: "图案" },
+  tradeSubmitManualConfirmHint: {
+    ru: "Когда отправите трейд в Steam, нажмите кнопку — только после этого окно закроется.",
+    en: "After you send the offer in Steam, click the button — the dialog closes only then.",
+    zh: "在 Steam 发送报价后点击按钮——届时才会关闭此窗口。",
+  },
+  tradeSubmitManualConfirmBtn: {
+    ru: "Я отправил обмен",
+    en: "I sent the trade",
+    zh: "我已发送交易",
+  },
+  tradeSubmitManualViewHistory: {
+    ru: "Открыть в истории",
+    en: "Open in history",
+    zh: "在历史中查看",
+  },
+
   marketWarning: {
     ru: "некоторые трейды могут быть отклонены из-за нестабильности рынка",
     en: "some trades may be rejected due to market instability",
