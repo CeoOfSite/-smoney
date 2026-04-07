@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { t, type LangCode } from "@/lib/i18n";
 
@@ -21,6 +21,16 @@ type ChatMsg = { id: string; sender: "user" | "admin"; text: string; createdAt: 
 
 const POLL_LIST_MS = 8000;
 const POLL_THREAD_MS = 7000;
+const ADMIN_CHAT_FILTER_STORAGE = "chez_admin_chat_filter";
+
+type ListFilter = "all" | "unread" | "unanswered";
+
+function readStoredFilter(): ListFilter {
+  if (typeof window === "undefined") return "all";
+  const v = localStorage.getItem(ADMIN_CHAT_FILTER_STORAGE);
+  if (v === "unread" || v === "unanswered" || v === "all") return v;
+  return "all";
+}
 
 function readLang(): LangCode {
   if (typeof window === "undefined") return "ru";
@@ -30,6 +40,7 @@ function readLang(): LangCode {
 
 export default function AdminChatClient() {
   const [lang, setLang] = useState<LangCode>("ru");
+  const [listFilter, setListFilter] = useState<ListFilter>("all");
   const [rows, setRows] = useState<Row[]>([]);
   const [totalUnread, setTotalUnread] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -46,8 +57,9 @@ export default function AdminChatClient() {
   const [sendError, setSendError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setLang(readLang());
+    setListFilter(readStoredFilter());
   }, []);
 
   const scrollBottom = useCallback(() => {
@@ -56,11 +68,21 @@ export default function AdminChatClient() {
   }, []);
 
   const loadList = useCallback(async () => {
-    const res = await fetch("/api/admin/chat", { credentials: "include" });
+    const q = listFilter === "all" ? "" : `?filter=${listFilter}`;
+    const res = await fetch(`/api/admin/chat${q}`, { credentials: "include" });
     if (!res.ok) return;
     const data = (await res.json()) as { data?: Row[]; totalUnreadUserMessages?: number };
     setRows(Array.isArray(data.data) ? data.data : []);
     setTotalUnread(typeof data.totalUnreadUserMessages === "number" ? data.totalUnreadUserMessages : 0);
+  }, [listFilter]);
+
+  const setFilter = useCallback((f: ListFilter) => {
+    setListFilter(f);
+    try {
+      localStorage.setItem(ADMIN_CHAT_FILTER_STORAGE, f);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const loadThread = useCallback(
@@ -188,6 +210,51 @@ export default function AdminChatClient() {
         </div>
       </div>
       {startError ? <p className="mb-4 text-sm text-red-600 dark:text-red-400">{startError}</p> : null}
+
+      <div
+        className="mb-4 flex flex-wrap gap-2"
+        role="tablist"
+        aria-label={t("adminChatTitle", lang)}
+      >
+        {(
+          [
+            ["all", "adminChatFilterAll"],
+            ["unread", "adminChatFilterUnread"],
+            ["unanswered", "adminChatFilterUnanswered"],
+          ] as const
+        ).map(([key, i18nKey]) => {
+          const active = listFilter === key;
+          const chipClass = `rounded-full border px-3 py-1.5 text-xs font-medium transition-colors sm:text-sm ${
+            active
+              ? "border-amber-500 bg-amber-500/15 text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200"
+              : "border-zinc-300 bg-white text-zinc-600 hover:border-zinc-400 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-zinc-500"
+          }`;
+          const onFilterClick = () => setFilter(key);
+          return active ? (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected="true"
+              onClick={onFilterClick}
+              className={chipClass}
+            >
+              {t(i18nKey, lang)}
+            </button>
+          ) : (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected="false"
+              onClick={onFilterClick}
+              className={chipClass}
+            >
+              {t(i18nKey, lang)}
+            </button>
+          );
+        })}
+      </div>
 
       <div className="grid min-h-[480px] gap-4 lg:grid-cols-[minmax(0,340px)_1fr]">
         <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">

@@ -298,6 +298,9 @@ const T: Translations = {
   chatNewBadge: { ru: "Новое сообщение", en: "New message", zh: "新消息" },
 
   adminChatNav: { ru: "Чаты", en: "Chats", zh: "聊天" },
+  adminChatFilterAll: { ru: "Все", en: "All", zh: "全部" },
+  adminChatFilterUnread: { ru: "Непрочитанные", en: "Unread", zh: "未读" },
+  adminChatFilterUnanswered: { ru: "Неотвеченные", en: "Unanswered", zh: "待回复" },
   adminChatTitle: { ru: "Чаты с пользователями", en: "User chats", zh: "用户聊天" },
   adminChatStartSteam: { ru: "Steam ID / ссылка", en: "Steam ID / URL", zh: "Steam ID / 链接" },
   adminChatStartBtn: { ru: "Начать чат", en: "Start chat", zh: "开始聊天" },
