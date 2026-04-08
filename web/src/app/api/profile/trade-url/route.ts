@@ -6,26 +6,37 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { parseTradeUrl, steamId64FromPartner } from "@/lib/steam-inventory";
+import { parseTradeUrl, trySteamId64FromPartner } from "@/lib/steam-inventory";
 
 export const dynamic = "force-dynamic";
+
+/** Bump when changing admin / validation behavior (verify all instances return it in JSON). */
+const TRADE_URL_API_VERSION = "v2_admin_bypass_check" as const;
 
 export async function POST(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "unauthorized", version: TRADE_URL_API_VERSION }, { status: 401 });
+  }
+
+  const row = await prisma.user.findUnique({
+    where: { steamId: user.steamId },
+    select: { steamId: true, isAdmin: true },
+  });
+  if (!row) {
+    return NextResponse.json({ error: "unauthorized", version: TRADE_URL_API_VERSION }, { status: 401 });
   }
 
   let body: { tradeUrl?: string };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+    return NextResponse.json({ error: "invalid_json", version: TRADE_URL_API_VERSION }, { status: 400 });
   }
 
   const { tradeUrl } = body;
   if (!tradeUrl || typeof tradeUrl !== "string") {
-    return NextResponse.json({ error: "trade_url_required" }, { status: 400 });
+    return NextResponse.json({ error: "trade_url_required", version: TRADE_URL_API_VERSION }, { status: 400 });
   }
 
   const parsed = parseTradeUrl(tradeUrl.trim());
@@ -33,6 +44,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: "invalid_trade_url",
+        version: TRADE_URL_API_VERSION,
         message:
           "Формат: https://steamcommunity.com/tradeoffer/new/?partner=…&token=…",
       },
@@ -40,11 +52,44 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const derivedSteamId = steamId64FromPartner(parsed.partner);
-  if (derivedSteamId !== user.steamId && !user.isAdmin) {
+  const derivedSteamId = trySteamId64FromPartner(parsed.partner);
+  if (!derivedSteamId) {
+    console.warn("[trade-url POST] trySteamId64FromPartner failed", {
+      version: TRADE_URL_API_VERSION,
+      parsedPartner: parsed.partner,
+      sessionSteamId: row.steamId,
+    });
+    return NextResponse.json(
+      {
+        error: "invalid_trade_url",
+        version: TRADE_URL_API_VERSION,
+        message: "Некорректный параметр partner в ссылке.",
+      },
+      { status: 400 },
+    );
+  }
+
+  const isAdmin = row.isAdmin === true;
+  const ownershipMismatch = derivedSteamId !== row.steamId;
+
+  console.warn(
+    "[trade-url POST]",
+    JSON.stringify({
+      version: TRADE_URL_API_VERSION,
+      sessionSteamId: user.steamId,
+      dbSteamId: row.steamId,
+      isAdmin: row.isAdmin,
+      derivedSteamId,
+      parsedPartner: parsed.partner,
+      ownershipMismatch,
+    }),
+  );
+
+  if (!isAdmin && ownershipMismatch) {
     return NextResponse.json(
       {
         error: "not_your_trade_url",
+        version: TRADE_URL_API_VERSION,
         message: "Эта trade-ссылка не принадлежит вашему аккаунту Steam. Вставьте свою ссылку.",
       },
       { status: 400 },
@@ -52,21 +97,26 @@ export async function POST(request: NextRequest) {
   }
 
   await prisma.user.update({
-    where: { steamId: user.steamId },
+    where: { steamId: row.steamId },
     data: { tradeUrl: tradeUrl.trim() },
   });
 
-  return NextResponse.json({ ok: true, partner: parsed.partner });
+  return NextResponse.json({
+    ok: true,
+    partner: parsed.partner,
+    version: TRADE_URL_API_VERSION,
+  });
 }
 
 export async function GET() {
   const user = await getSessionUser();
   if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "unauthorized", version: TRADE_URL_API_VERSION }, { status: 401 });
   }
 
   return NextResponse.json({
     tradeUrl: user.tradeUrl ?? null,
     hasTradeUrl: !!user.tradeUrl,
+    version: TRADE_URL_API_VERSION,
   });
 }

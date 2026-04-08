@@ -71,14 +71,45 @@ export interface NormalizedItem {
 const TRADE_URL_RE =
   /steamcommunity\.com\/tradeoffer\/new\/\?partner=(\d+)&token=([A-Za-z0-9_-]+)/;
 
+const TRADE_TOKEN_PARAM_RE = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * Parse Steam trade-offer URL. Accepts canonical `?partner=&token=` order from the regex,
+ * or any query order via URL (e.g. `?token=…&partner=…`).
+ */
 export function parseTradeUrl(url: string): { partner: string; token: string } | null {
-  const m = TRADE_URL_RE.exec(url);
-  if (!m) return null;
-  return { partner: m[1], token: m[2] };
+  const trimmed = url.trim();
+  const m = TRADE_URL_RE.exec(trimmed);
+  if (m) return { partner: m[1], token: m[2] };
+  try {
+    const href = trimmed.includes("://") ? trimmed : `https://${trimmed}`;
+    const u = new URL(href);
+    if (!u.hostname.toLowerCase().endsWith("steamcommunity.com")) return null;
+    if (!u.pathname.replace(/\/$/, "").endsWith("/tradeoffer/new")) return null;
+    const partner = u.searchParams.get("partner");
+    const token = u.searchParams.get("token");
+    if (!partner || !/^\d+$/.test(partner) || !token || !TRADE_TOKEN_PARAM_RE.test(token)) return null;
+    return { partner, token };
+  } catch {
+    return null;
+  }
 }
 
+const STEAM64_OFFSET = BigInt("76561197960265728");
+
 export function steamId64FromPartner(partner: string): string {
-  return (BigInt(partner) + BigInt("76561197960265728")).toString();
+  return (BigInt(partner) + STEAM64_OFFSET).toString();
+}
+
+/** Safe variant for request handlers; returns null if `partner` is not a valid account id. */
+export function trySteamId64FromPartner(partner: string): string | null {
+  const p = partner.trim();
+  if (!/^\d+$/.test(p)) return null;
+  try {
+    return (BigInt(p) + STEAM64_OFFSET).toString();
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
