@@ -1026,9 +1026,9 @@ export default function TradePageClient({
           )}
         </div>
 
-        {/* ─── CENTER: h-full + overflow-hidden — no internal scroll; clip if filters exceed row */}
-        <div className="@container flex h-full max-h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#111113]">
-          <div className="flex h-full min-h-0 flex-col gap-1.5 px-1.5 pt-1.5 pb-[112px] sm:gap-2 sm:px-2 sm:pt-2 sm:pb-[120px]">
+        {/* ─── CENTER: outer clips; inner min-h-0 only (no h-full / flex-1 — avoids stretching under footer) */}
+        <div className="@container flex max-h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#111113]">
+          <div className="flex min-h-0 flex-col gap-1.5 px-1.5 pt-1.5 pb-[112px] sm:gap-2 sm:px-2 sm:pt-2 sm:pb-[120px]">
             {/* Trade analysis */}
             <div className="grid min-w-0 grid-cols-2 gap-1">
               <div className="min-w-0 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-1.5 py-1 text-center">
@@ -1056,7 +1056,7 @@ export default function TradePageClient({
             {/* Overpay + Submit — column in narrow center so text fits without horizontal clip */}
             <div className="flex min-w-0 flex-col gap-1">
               <div className="@[240px]:flex-row flex min-w-0 flex-col gap-1 @[240px]:items-stretch">
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-1.5 py-1">
+                <div className="flex w-full min-w-0 flex-col gap-0.5 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-1.5 py-1 @[240px]:w-auto @[240px]:grow">
                   <div className="flex min-w-0 items-center justify-between gap-1">
                     <span className={`shrink-0 text-[9px] font-semibold ${overpayWordColor}`}>{t("overpay", lang)}</span>
                     <span
@@ -1076,7 +1076,7 @@ export default function TradePageClient({
                   <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-800">
                     <div
                       ref={overpayBarFillRef}
-                      className="trade-overpay-bar-fill h-full rounded-full transition-[width,background-color] duration-300"
+                      className="trade-overpay-bar-fill h-1 rounded-full transition-[width,background-color] duration-300"
                     />
                   </div>
                 </div>
@@ -1183,7 +1183,7 @@ export default function TradePageClient({
                         setInvFloatMin(Math.min(step / 1000, invFloatMax));
                       }}
                       aria-label={`${t("invFilterFloatRange", lang)} — ${t("invFilterMin", lang)}`}
-                      className="min-w-0 flex-1 accent-emerald-500"
+                      className="min-w-0 grow accent-emerald-500"
                     />
                   </div>
                   <div className="flex min-w-0 items-center gap-1.5">
@@ -1214,7 +1214,7 @@ export default function TradePageClient({
                         setInvFloatMax(Math.max(step / 1000, invFloatMin));
                       }}
                       aria-label={`${t("invFilterFloatRange", lang)} — ${t("invFilterMax", lang)}`}
-                      className="min-w-0 flex-1 accent-red-500"
+                      className="min-w-0 grow accent-red-500"
                     />
                   </div>
                 </div>
@@ -1268,7 +1268,7 @@ export default function TradePageClient({
                       }`}
                     >
                       <span className="shrink-0 text-xs sm:text-sm">{cat.icon}</span>
-                      <span className="min-w-0 flex-1 truncate">{t(cat.i18n, lang)}</span>
+                      <span className="min-w-0 grow truncate">{t(cat.i18n, lang)}</span>
                       {category === cat.key && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />}
                     </button>
                   ))}
