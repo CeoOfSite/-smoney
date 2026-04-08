@@ -1,58 +1,9 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { patchDatabaseUrlForRenderPostgres } from "./render-postgres-env.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-
-function isRenderPostgresUrl(url) {
-  try {
-    const u = new URL(url);
-    const host = u.hostname.toLowerCase();
-    return (
-      host.endsWith("postgres.render.com") ||
-      host.startsWith("dpg-") ||
-      host.includes(".oregon-postgres.render.com")
-    );
-  } catch {
-    return /postgres\.render\.com/i.test(url);
-  }
-}
-
-function shouldHardenTls(url) {
-  if (!url || !/^postgres(ql)?:\/\//i.test(url)) return false;
-  if (process.env.RENDER === "true") return true;
-  return isRenderPostgresUrl(url);
-}
-
-/**
- * Render Postgres expects TLS. Prisma/quaint also honors libpq-style PGSSLMODE.
- * We normalize the URL so sslmode is explicit even if Dashboard omits query params.
- */
-function patchDatabaseUrlForRenderPostgres() {
-  const raw = process.env.DATABASE_URL;
-  if (!raw || !shouldHardenTls(raw)) return;
-
-  try {
-    const u = new URL(raw);
-    if (u.protocol !== "postgres:" && u.protocol !== "postgresql:") return;
-    u.searchParams.set("sslmode", "require");
-    u.searchParams.set("connect_timeout", "120");
-    process.env.DATABASE_URL = u.toString();
-  } catch {
-    if (!/sslmode=/i.test(raw)) {
-      process.env.DATABASE_URL = raw.includes("?")
-        ? `${raw}&sslmode=require&connect_timeout=120`
-        : `${raw}?sslmode=require&connect_timeout=120`;
-    } else if (!/connect_timeout=/i.test(raw)) {
-      process.env.DATABASE_URL = raw.includes("?")
-        ? `${raw}&connect_timeout=120`
-        : `${raw}?connect_timeout=120`;
-    }
-  }
-
-  process.env.PGSSLMODE = "require";
-  console.error("[render-start] TLS params applied for managed Postgres (sslmode=require)");
-}
 
 patchDatabaseUrlForRenderPostgres();
 
@@ -70,5 +21,14 @@ function runNpx(args) {
   if (r.status !== 0) process.exit(r.status ?? 1);
 }
 
-runNpx(["prisma", "migrate", "deploy"]);
+/**
+ * Prefer Render **Release Command** `npm run render:release` so this process only boots Next
+ * and binds PORT quickly (avoids deploy health-check timeouts).
+ * Set RUN_MIGRATE_ON_START=true to run migrations here (slower cold start).
+ */
+if (process.env.RUN_MIGRATE_ON_START === "true") {
+  console.error("[render-start] RUN_MIGRATE_ON_START=true: running prisma migrate deploy before next start");
+  runNpx(["prisma", "migrate", "deploy"]);
+}
+
 runNpx(["next", "start"]);

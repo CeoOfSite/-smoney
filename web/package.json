@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "node ./scripts/render-start.mjs",
+    "render:release": "node ./scripts/render-release.mjs",
     "lint": "eslint",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
