@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
+import { resolveGuestInventoryTargetSteamId } from "@/lib/guest-inventory-target";
 import {
   invalidateCache,
   markOwnerRefreshed,
@@ -80,6 +81,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(rateLimitBody(cooldown), { status: 429 });
   }
 
+  const guestTargetSteamId = resolveGuestInventoryTargetSteamId(user);
+  if (guestTargetSteamId) {
+    await invalidateCache(guestTargetSteamId);
+  }
   await invalidateCache(user.steamId);
   await markUserRefreshed(user.steamId);
 
@@ -102,11 +107,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "trade_url_required" }, { status: 400 });
   }
 
+  if (!guestTargetSteamId) {
+    return NextResponse.json({ error: "invalid_trade_url", message: "Сохранённая trade-ссылка некорректна." }, { status: 400 });
+  }
+
   const result = await fetchGuestInventory(user.tradeUrl);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 502 });
   }
-  await setCache(user.steamId, result.items);
+  await setCache(guestTargetSteamId, result.items);
   return NextResponse.json({
     ok: true,
     count: result.items.length,

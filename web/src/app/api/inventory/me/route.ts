@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
+import { resolveGuestInventoryTargetSteamId } from "@/lib/guest-inventory-target";
 import { getCached, refreshCooldownRemainingUser, setCache } from "@/lib/inventory-cache";
 import { fetchGuestInventory, fetchOwnerInventory } from "@/lib/steam-inventory";
 import type { NormalizedItem } from "@/lib/steam-inventory";
@@ -21,7 +22,18 @@ export async function GET() {
 
   const isOwner = user.steamId === process.env.OWNER_STEAM_ID;
 
-  let items: NormalizedItem[] | null = await getCached(user.steamId);
+  const guestTargetSteamId = !isOwner ? resolveGuestInventoryTargetSteamId(user) : null;
+  const cacheKeySteamId = isOwner ? user.steamId : guestTargetSteamId;
+
+  if (!isOwner && user.tradeUrl && !guestTargetSteamId) {
+    return NextResponse.json(
+      { error: "invalid_trade_url", message: "Сохранённая trade-ссылка некорректна. Укажите ссылку заново." },
+      { status: 400 },
+    );
+  }
+
+  let items: NormalizedItem[] | null =
+    cacheKeySteamId != null ? await getCached(cacheKeySteamId) : null;
 
   if (!items) {
     if (isOwner) {
@@ -43,7 +55,9 @@ export async function GET() {
       }
       items = result.items;
     }
-    await setCache(user.steamId, items);
+    if (cacheKeySteamId != null) {
+      await setCache(cacheKeySteamId, items);
+    }
   }
 
   const side = isOwner ? "owner" : "guest";

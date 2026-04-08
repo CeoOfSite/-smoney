@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { tradeWhereFromAdminStatusTab } from "@/lib/admin-trade-list";
 import { buildOwnerPublicInventoryItems } from "@/lib/build-owner-public-inventory";
+import { resolveGuestInventoryTargetSteamId } from "@/lib/guest-inventory-target";
 import { getCached, setCache } from "@/lib/inventory-cache";
 import { centsCountedInTradeTotal, resolvePricesBatch } from "@/lib/pricempire";
 import type { OwnerPublicInventoryRow } from "@/lib/owner-manual-trade-lock";
@@ -153,11 +154,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let guestInv: NormalizedItem[] | null = await getCached(user.steamId);
+  const guestTargetSteamId = resolveGuestInventoryTargetSteamId(user);
+  let guestInv: NormalizedItem[] | null =
+    guestTargetSteamId != null ? await getCached(guestTargetSteamId) : null;
   if (!guestInv) {
     if (!user.tradeUrl) {
       return NextResponse.json(
         { error: "trade_url_required", message: "Сначала сохраните вашу trade-ссылку" },
+        { status: 400 },
+      );
+    }
+    if (!guestTargetSteamId) {
+      return NextResponse.json(
+        { error: "invalid_trade_url", message: "Сохранённая trade-ссылка некорректна." },
         { status: 400 },
       );
     }
@@ -169,7 +178,7 @@ export async function POST(request: NextRequest) {
       );
     }
     guestInv = res.items;
-    await setCache(user.steamId, guestInv);
+    await setCache(guestTargetSteamId, guestInv);
   }
 
   const ownerMap = new Map<string, OwnerPublicInventoryRow>(

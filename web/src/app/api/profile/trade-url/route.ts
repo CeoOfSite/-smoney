@@ -5,6 +5,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
+import { resolveGuestInventoryTargetSteamId } from "@/lib/guest-inventory-target";
+import { invalidateCache } from "@/lib/inventory-cache";
 import { prisma } from "@/lib/prisma";
 import { parseTradeUrl, trySteamId64FromPartner } from "@/lib/steam-inventory";
 
@@ -96,10 +98,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const targetSteamId = isAdmin ? derivedSteamId : row.steamId;
+
+  const beforeActor = {
+    steamId: user.steamId,
+    tradeUrl: user.tradeUrl,
+    isAdmin: row.isAdmin === true,
+  };
+  const afterActor = {
+    steamId: user.steamId,
+    tradeUrl: tradeUrl.trim(),
+    isAdmin: row.isAdmin === true,
+  };
+
   await prisma.user.update({
     where: { steamId: row.steamId },
     data: { tradeUrl: tradeUrl.trim() },
   });
+
+  const cacheKeys = new Set<string>([user.steamId, targetSteamId]);
+  const oldT = resolveGuestInventoryTargetSteamId(beforeActor);
+  const newT = resolveGuestInventoryTargetSteamId(afterActor);
+  if (oldT) cacheKeys.add(oldT);
+  if (newT) cacheKeys.add(newT);
+  for (const sid of cacheKeys) {
+    await invalidateCache(sid);
+  }
 
   return NextResponse.json({
     ok: true,
