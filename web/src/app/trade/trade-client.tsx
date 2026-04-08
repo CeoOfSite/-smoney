@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { OWNER_REFRESH_COOLDOWN_MS, USER_REFRESH_COOLDOWN_MS } from "@/lib/inventory-refresh-limits";
 import {
@@ -219,6 +228,13 @@ export default function TradePageClient({
   const [lockedTapNotice, setLockedTapNotice] = useState<string | null>(null);
   const lockedTapNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [mobileTradeTab, setMobileTradeTab] = useState<"inventory" | "market">("market");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const mobileInvScrollRef = useRef<HTMLDivElement>(null);
+  const mobileMarketScrollRef = useRef<HTMLDivElement>(null);
+  const savedInvScrollTop = useRef(0);
+  const savedMarketScrollTop = useRef(0);
+
   // Per-panel search/sort
   const [mySearch, setMySearch] = useState("");
   const [mySort, setMySort] = useState("price-desc");
@@ -300,6 +316,7 @@ export default function TradePageClient({
   });
 
   const overpayBarFillRef = useRef<HTMLDivElement>(null);
+  const mobileOverpayBarFillRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { localStorage.setItem("chez_currency", currency); }, [currency]);
   useEffect(() => { localStorage.setItem("chez_lang", lang); }, [lang]);
@@ -456,6 +473,43 @@ export default function TradePageClient({
       document.body.style.overflow = prev;
     };
   }, [tradeSubmitModalOpen]);
+
+  const switchMobileTab = useCallback(
+    (tab: "inventory" | "market") => {
+      if (mobileTradeTab === "market" && mobileMarketScrollRef.current) {
+        savedMarketScrollTop.current = mobileMarketScrollRef.current.scrollTop;
+      }
+      if (mobileTradeTab === "inventory" && mobileInvScrollRef.current) {
+        savedInvScrollTop.current = mobileInvScrollRef.current.scrollTop;
+      }
+      setMobileTradeTab(tab);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (tab === "market" && mobileMarketScrollRef.current) {
+            mobileMarketScrollRef.current.scrollTop = savedMarketScrollTop.current;
+          }
+          if (tab === "inventory" && mobileInvScrollRef.current) {
+            mobileInvScrollRef.current.scrollTop = savedInvScrollTop.current;
+          }
+        });
+      });
+    },
+    [mobileTradeTab],
+  );
+
+  useEffect(() => {
+    if (!mobileFiltersOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileFiltersOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [mobileFiltersOpen]);
 
   // ------ loaders ------
   const loadOwner = useCallback(
@@ -719,10 +773,11 @@ export default function TradePageClient({
     "min-w-0 rounded-xl border border-zinc-800/70 bg-zinc-950/85 px-2 py-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] sm:rounded-2xl sm:px-3 sm:py-2.5 lg:px-4 lg:py-3.5";
 
   useLayoutEffect(() => {
-    const el = overpayBarFillRef.current;
-    if (!el) return;
-    el.style.setProperty("--trade-overpay-bar-width", `${overpayBarFillPct}%`);
-    el.style.setProperty("--trade-overpay-bar-color", overpayBarColor);
+    for (const el of [overpayBarFillRef.current, mobileOverpayBarFillRef.current]) {
+      if (!el) continue;
+      el.style.setProperty("--trade-overpay-bar-width", `${overpayBarFillPct}%`);
+      el.style.setProperty("--trade-overpay-bar-color", overpayBarColor);
+    }
   }, [overpayBarFillPct, overpayBarColor]);
 
   const requirementRows: { done: boolean; text: string; issue?: boolean }[] = [
@@ -747,6 +802,203 @@ export default function TradePageClient({
     }
   }
   const pendingRequirements = requirementRows.filter((r) => !r.done).length;
+
+  const marketFilterForm = (
+    <>
+      <div className={tradeFilterCardClass}>
+        <h4 className="mb-2 flex min-w-0 items-center gap-1.5 text-[9px] font-semibold text-zinc-400 sm:text-[10px]">
+          <span className="shrink-0 font-bold text-amber-500" aria-hidden>
+            $
+          </span>
+          <span className="min-w-0 truncate">{t("invFilterPriceRange", lang)}</span>
+        </h4>
+        <div className="flex min-w-0 items-center gap-2">
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder={t("invFilterMin", lang)}
+            value={invPriceMinStr}
+            onChange={(e) => setInvPriceMinStr(e.target.value)}
+            className="w-full min-w-0 rounded-lg border border-zinc-700/90 bg-zinc-900/90 px-2 py-1.5 text-[9px] text-zinc-100 sm:text-[10px]"
+          />
+          <span className="shrink-0 text-zinc-500">—</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder={t("invFilterMax", lang)}
+            value={invPriceMaxStr}
+            onChange={(e) => setInvPriceMaxStr(e.target.value)}
+            className="w-full min-w-0 rounded-lg border border-zinc-700/90 bg-zinc-900/90 px-2 py-1.5 text-[9px] text-zinc-100 sm:text-[10px]"
+          />
+        </div>
+      </div>
+
+      <div className={tradeFilterCardClass}>
+        <h4 className="mb-2 flex min-w-0 items-center gap-1.5 text-[9px] font-semibold text-zinc-400 sm:text-[10px]">
+          <span className="shrink-0 text-amber-500">◈</span>
+          <span className="min-w-0 truncate">{t("itemType", lang)}</span>
+        </h4>
+        <div className="grid min-w-0 grid-cols-2 gap-0.5">
+          {CATEGORY_KEYS.map((cat) => (
+            <button
+              key={cat.key}
+              type="button"
+              onClick={() => setCategory(cat.key)}
+              className={`flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-left text-[9px] leading-tight transition-all sm:text-[10px] ${
+                category === cat.key
+                  ? "border border-amber-600/40 bg-amber-600/20 font-semibold text-amber-400"
+                  : "border border-transparent text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200"
+              }`}
+            >
+              <span className="shrink-0 text-xs sm:text-sm">{cat.icon}</span>
+              <span className="min-w-0 grow truncate">{t(cat.i18n, lang)}</span>
+              {category === cat.key && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className={tradeFilterCardClass}>
+        <h4 className="mb-2 flex min-w-0 items-center gap-1.5 text-[9px] font-semibold text-zinc-400 sm:text-[10px]">
+          <span className="shrink-0 text-amber-500">◈</span>
+          <span className="min-w-0 truncate">{t("wearLabel", lang)}</span>
+        </h4>
+        <div className="flex min-w-0 flex-wrap gap-1">
+          <button
+            type="button"
+            onClick={() => setWear("All")}
+            className={`rounded-lg px-2 py-1 text-[9px] font-medium transition-colors sm:text-[10px] ${
+              wear === "All" ? "border border-amber-600/40 bg-amber-600/20 text-amber-400" : "border border-zinc-800/60 text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            {t("wearAll", lang)}
+          </button>
+          {WEAR_LABELS.map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => setWear(w)}
+              className={`rounded-lg px-2 py-1 text-[9px] font-medium transition-colors sm:text-[10px] ${
+                wear === w ? "border border-amber-600/40 bg-amber-600/20 text-amber-400" : "border border-zinc-800/60 text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              {WEAR_SHORT[w]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className={tradeFilterCardClass}>
+        <h4 className="mb-2 flex min-w-0 items-center gap-1.5 text-[9px] font-semibold text-zinc-400 sm:text-[10px]">
+          <span className="shrink-0 text-amber-500" aria-hidden>
+            ◐
+          </span>
+          <span className="min-w-0 truncate">{t("invFilterFloatRange", lang)}</span>
+        </h4>
+        <div
+          className="mb-2 h-2.5 w-full rounded-full bg-gradient-to-r from-emerald-500 via-amber-400 to-red-600 shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)]"
+          aria-hidden
+        />
+        <div className="flex flex-col gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="w-8 shrink-0 text-[8px] font-medium text-zinc-500">{t("invFilterMin", lang)}</span>
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.001}
+              value={invFloatMin}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (!Number.isFinite(v)) return;
+                const x = Math.max(0, Math.min(1, v));
+                setInvFloatMin(Math.min(x, invFloatMax));
+              }}
+              aria-label={`${t("invFilterFloatRange", lang)} — ${t("invFilterMin", lang)}`}
+              className="w-[4.25rem] shrink-0 rounded-lg border border-zinc-700/90 bg-zinc-900/90 px-1.5 py-1 text-[9px] text-zinc-100"
+            />
+            <input
+              type="range"
+              min={0}
+              max={1000}
+              step={1}
+              value={Math.round(invFloatMin * 1000)}
+              onChange={(e) => {
+                const step = Number(e.target.value);
+                setInvFloatMin(Math.min(step / 1000, invFloatMax));
+              }}
+              aria-label={`${t("invFilterFloatRange", lang)} — ${t("invFilterMin", lang)}`}
+              className="min-w-0 grow accent-emerald-500"
+            />
+          </div>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="w-8 shrink-0 text-[8px] font-medium text-zinc-500">{t("invFilterMax", lang)}</span>
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.001}
+              value={invFloatMax}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (!Number.isFinite(v)) return;
+                const x = Math.max(0, Math.min(1, v));
+                setInvFloatMax(Math.max(x, invFloatMin));
+              }}
+              aria-label={`${t("invFilterFloatRange", lang)} — ${t("invFilterMax", lang)}`}
+              className="w-[4.25rem] shrink-0 rounded-lg border border-zinc-700/90 bg-zinc-900/90 px-1.5 py-1 text-[9px] text-zinc-100"
+            />
+            <input
+              type="range"
+              min={0}
+              max={1000}
+              step={1}
+              value={Math.round(invFloatMax * 1000)}
+              onChange={(e) => {
+                const step = Number(e.target.value);
+                setInvFloatMax(Math.max(step / 1000, invFloatMin));
+              }}
+              aria-label={`${t("invFilterFloatRange", lang)} — ${t("invFilterMax", lang)}`}
+              className="min-w-0 grow accent-red-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className={tradeFilterCardClass}>
+        <h4 className="mb-2.5 text-[10px] font-semibold tracking-tight text-zinc-300 sm:text-[11px]">{t("invFilterOthers", lang)}</h4>
+        <div className="flex flex-col gap-2">
+          <label className="flex cursor-pointer items-center gap-2.5 text-[9px] text-zinc-300 sm:text-[10px]">
+            <input
+              type="checkbox"
+              checked={invShowStatTrak}
+              onChange={(e) => setInvShowStatTrak(e.target.checked)}
+              className="h-3.5 w-3.5 shrink-0 rounded border-zinc-600 bg-zinc-900 accent-amber-500"
+            />
+            {t("invFilterStatTrak", lang)}
+          </label>
+          <label className="flex cursor-pointer items-center gap-2.5 text-[9px] text-zinc-300 sm:text-[10px]">
+            <input
+              type="checkbox"
+              checked={invShowSouvenir}
+              onChange={(e) => setInvShowSouvenir(e.target.checked)}
+              className="h-3.5 w-3.5 shrink-0 rounded border-zinc-600 bg-zinc-900 accent-amber-500"
+            />
+            {t("invFilterSouvenir", lang)}
+          </label>
+          <label className="flex cursor-pointer items-center gap-2.5 text-[9px] text-zinc-300 sm:text-[10px]">
+            <input
+              type="checkbox"
+              checked={invShowTradeLocked}
+              onChange={(e) => setInvShowTradeLocked(e.target.checked)}
+              className="h-3.5 w-3.5 shrink-0 rounded border-zinc-600 bg-zinc-900 accent-amber-500"
+            />
+            {t("invFilterTradeLocked", lang)}
+          </label>
+        </div>
+      </div>
+    </>
+  );
 
   function matchesInvFilters(item: InventoryItem): boolean {
     if (isStatTrakItem(item) && !invShowStatTrak) return false;
@@ -832,6 +1084,191 @@ export default function TradePageClient({
     return sortOwnerItems(r, s);
   }
 
+  function renderGuestInventoryColumn(
+    invScrollRef?: RefObject<HTMLDivElement | null>,
+    scrollVariant: "page" | "mobileTab" = "page",
+  ) {
+    const scrollCls =
+      scrollVariant === "mobileTab"
+        ? "trade-scroll trade-mobile-tab-scroll px-1 py-1 sm:px-2 sm:py-1.5"
+        : "trade-scroll trade-inventory-scroll px-1 py-1 sm:px-2 sm:py-1.5";
+    const guestScrollCls =
+      scrollVariant === "mobileTab"
+        ? "trade-scroll trade-mobile-tab-scroll flex w-full flex-col items-center justify-start gap-3 px-4 pb-5 pt-3 text-center sm:gap-4 sm:px-6 sm:pb-6 sm:pt-4 lg:min-h-0 lg:flex-1"
+        : "trade-scroll trade-inventory-scroll flex w-full flex-col items-center justify-start gap-3 px-4 pb-5 pt-3 text-center sm:gap-4 sm:px-6 sm:pb-6 sm:pt-4 lg:min-h-0 lg:flex-1";
+    const tradeUrlWrapCls =
+      scrollVariant === "mobileTab"
+        ? "trade-scroll trade-mobile-tab-scroll w-full lg:min-h-0 lg:flex-1"
+        : "trade-scroll trade-inventory-scroll w-full lg:min-h-0 lg:flex-1";
+
+    if (!authReady) {
+      return (
+        <div className="flex w-full min-h-0 flex-1 flex-col lg:min-h-0 lg:flex-1">
+          <PanelHeader
+            search={mySearch}
+            onSearch={setMySearch}
+            sort={mySort}
+            onSort={setMySort}
+            prefix="my"
+            onRefresh={() => doRefresh("my", setMyRefreshing, setMyCooldown, loadMyInventory)}
+            refreshing={myRefreshing}
+            cooldown={myCooldown}
+            lang={lang}
+            controlsDisabled
+          />
+          <div ref={invScrollRef} className={scrollCls}>
+            <ItemGridSkeleton lang={lang} />
+          </div>
+        </div>
+      );
+    }
+    if (!isLoggedIn) {
+      return (
+        <div ref={invScrollRef} className={guestScrollCls}>
+          <div className="text-5xl opacity-20">🎮</div>
+          <p className="max-w-xs text-sm text-zinc-500">{t("loginPrompt", lang)}</p>
+          <a href="/api/auth/steam" className="rounded-lg bg-amber-600 px-6 py-2 text-sm font-semibold text-white hover:bg-amber-500">
+            {t("loginSteam", lang)}
+          </a>
+        </div>
+      );
+    }
+    if (!hasTradeUrl || editingTradeUrl) {
+      return (
+        <div ref={invScrollRef} className={tradeUrlWrapCls}>
+          <div className="flex flex-col items-center gap-4 px-6 pb-6 pt-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-600/20 text-2xl">🔗</div>
+            <h3 className="text-base font-bold text-zinc-100">
+              {hasTradeUrl ? t("updateTradeUrl", lang) : t("pasteTradeUrl", lang)}
+            </h3>
+            <p className="max-w-xs text-center text-xs text-zinc-500">
+              {isAdmin ? (
+                t("tradeUrlAdminHint", lang)
+              ) : (
+                <>
+                  {t("tradeUrlHint", lang)} <strong className="text-zinc-400">{t("onlyYourOwn", lang)}</strong>
+                </>
+              )}
+            </p>
+            <div className="flex w-full max-w-sm flex-col gap-2">
+              <input
+                type="text"
+                placeholder="https://steamcommunity.com/tradeoffer/new/?partner=...&token=..."
+                className="w-full rounded-lg border-2 border-amber-600/40 bg-zinc-800/80 px-3 py-2.5 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none"
+                value={tradeUrl}
+                onChange={(e) => setTradeUrl(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void saveTradeUrl()}
+                  className="flex-1 rounded-lg bg-amber-600 py-2.5 text-xs font-bold text-white transition-colors hover:bg-amber-500"
+                >
+                  {t("saveAndLoad", lang)}
+                </button>
+                {hasTradeUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingTradeUrl(false)}
+                    className="rounded-lg border border-zinc-700 px-4 py-2.5 text-xs text-zinc-400 hover:text-zinc-200"
+                  >
+                    {t("cancel", lang)}
+                  </button>
+                )}
+              </div>
+            </div>
+            <a
+              href="https://steamcommunity.com/my/tradeoffers/privacy#trade_offer_access_url"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] text-amber-500/70 hover:text-amber-400 hover:underline"
+            >
+              {t("whereTradeUrl", lang)}
+            </a>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="flex w-full min-h-0 flex-1 flex-col lg:min-h-0 lg:flex-1">
+        <PanelHeader
+          search={mySearch}
+          onSearch={setMySearch}
+          sort={mySort}
+          onSort={setMySort}
+          prefix="my"
+          onRefresh={() => doRefresh("my", setMyRefreshing, setMyCooldown, loadMyInventory)}
+          refreshing={myRefreshing}
+          cooldown={myCooldown}
+          tradeUrlAction={() => setEditingTradeUrl(true)}
+          lang={lang}
+          controlsDisabled={myInventoryLoading}
+        />
+        <div ref={invScrollRef} className={scrollCls}>
+          {myInventoryLoading ? (
+            <ItemGridSkeleton lang={lang} />
+          ) : (
+            <ItemGrid
+              items={filterMy(myItems, mySearch, mySort)}
+              side="guest"
+              selected={selectedMy}
+              onToggle={(id) => toggle(setSelectedMy, id)}
+              showAssetId={isAdmin}
+              fmt={fmt}
+              lang={lang}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function renderOwnerMarketColumn(
+    invScrollRef?: RefObject<HTMLDivElement | null>,
+    panelMode: "desktop" | "mobileMarket" = "desktop",
+  ) {
+    const mobile = panelMode === "mobileMarket";
+    const scrollCls = mobile
+      ? "trade-scroll trade-mobile-tab-scroll px-1 py-1 sm:px-2 sm:py-1.5"
+      : "trade-scroll trade-inventory-scroll px-1 py-1 sm:px-2 sm:py-1.5";
+    return (
+      <div className="flex w-full min-h-0 flex-1 flex-col lg:min-h-0 lg:flex-1">
+        <PanelHeader
+          search={ownerSearch}
+          onSearch={setOwnerSearch}
+          sort={ownerSort}
+          onSort={setOwnerSort}
+          prefix="owner"
+          onRefresh={() => doRefresh("owner", setOwnerRefreshing, setOwnerCooldown, loadOwner)}
+          refreshing={ownerRefreshing}
+          cooldown={ownerCooldown}
+          lang={lang}
+          controlsDisabled={ownerInventoryLoading}
+          showRefreshButton={isAdmin}
+          variant={mobile ? "marketMobile" : "default"}
+          onOpenFilters={mobile ? () => setMobileFiltersOpen(true) : undefined}
+          searchPlaceholder={mobile ? t("findToBuyPlaceholder", lang) : undefined}
+        />
+        <div ref={invScrollRef} className={scrollCls}>
+          {ownerInventoryLoading ? (
+            <ItemGridSkeleton lang={lang} />
+          ) : (
+            <ItemGrid
+              items={filterOwner(ownerItems, ownerSearch, ownerSort)}
+              side="owner"
+              selected={selectedOwner}
+              onToggle={(id) => toggle(setSelectedOwner, id)}
+              onLockedItemClick={showLockedTapNotice}
+              showAssetId={isAdmin}
+              fmt={fmt}
+              lang={lang}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="scheme-dark flex min-h-[100dvh] min-w-0 flex-col overflow-x-hidden bg-[#0d0d0f] text-zinc-100 lg:h-[100dvh] lg:min-h-0 lg:overflow-hidden">
       {/* Header */}
@@ -853,7 +1290,10 @@ export default function TradePageClient({
             onCurrencyChange={setCurrency}
           />
           {!isLoggedIn ? (
-            <a href="/api/auth/steam" className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-amber-500 transition-colors">
+            <a
+              href="/api/auth/steam"
+              className="hidden rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-500 lg:inline-flex"
+            >
               {t("loginSteam", lang)}
             </a>
           ) : (
@@ -901,12 +1341,170 @@ export default function TradePageClient({
         </div>
       )}
 
-      {/* Main: lg uses h-0 + overflow-hidden for fixed viewport; <lg grows with content (page scroll) */}
-      <main className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-visible lg:h-0 lg:overflow-hidden">
-        {/* Grid: 1 col <lg (your → center → shop); 3 cols lg+ */}
-        <div className="grid min-h-0 w-full min-w-0 flex-1 grid-cols-1 items-stretch overflow-visible lg:h-full lg:grid-cols-[minmax(0,39%)_minmax(0,22%)_minmax(0,39%)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
+      {/* Main: lg uses h-0 + overflow-hidden for fixed viewport; mobile uses tabbed flex column */}
+      <main className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden lg:h-0">
+        {/* ─── Mobile / tablet: shared summary + tabs (inventory | market) ─── */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:hidden">
+          <div className="shrink-0 space-y-2 border-b border-zinc-800/60 bg-[#111113] px-3 py-2">
+            {!isLoggedIn ? (
+              <a
+                href="/api/auth/steam"
+                className="block w-full rounded-xl bg-violet-600 py-3 text-center text-sm font-bold text-white shadow-lg shadow-violet-900/30 transition-colors hover:bg-violet-500 active:scale-[0.99]"
+              >
+                {t("loginSteam", lang)}
+              </a>
+            ) : null}
+            <div className="flex min-w-0 items-stretch gap-1">
+              <div className="min-w-0 flex-1 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-1.5 py-1.5 text-center">
+                <div className="mb-0.5 truncate text-[8px] text-zinc-500">{t("youGive", lang)}</div>
+                <p className="truncate text-xs font-bold tabular-nums text-zinc-100">{fmt(myTotal)}</p>
+              </div>
+              <div className="flex w-11 shrink-0 items-center justify-center text-lg text-zinc-600" aria-hidden>
+                🛒
+              </div>
+              <div className="min-w-0 flex-1 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-1.5 py-1.5 text-center">
+                <div className="mb-0.5 truncate text-[8px] text-zinc-500">{t("youGet", lang)}</div>
+                <p className="truncate text-xs font-bold tabular-nums text-zinc-100">{fmt(ownerTotal)}</p>
+              </div>
+            </div>
+            {tradeBalanceAlertText && tradeSelectionReady ? (
+              <div
+                className="flex min-w-0 gap-1 rounded-lg border border-amber-700/35 bg-zinc-900/90 px-2 py-1.5 text-[9px] leading-snug text-amber-100/95"
+                role="alert"
+              >
+                <span className="shrink-0 text-amber-500" aria-hidden>
+                  ⚠
+                </span>
+                <p className="min-w-0 break-words">{tradeBalanceAlertText}</p>
+              </div>
+            ) : null}
+            <div className="flex min-w-0 flex-col gap-1">
+              <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-stretch">
+                <div className="flex w-full min-w-0 flex-col gap-0.5 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-2 py-1 sm:grow">
+                  <div className="flex min-w-0 items-center justify-between gap-1">
+                    <span className={`shrink-0 text-[9px] font-semibold ${overpayWordColor}`}>{t("overpay", lang)}</span>
+                    <span
+                      className={`min-w-0 truncate text-right text-[10px] font-bold tabular-nums ${
+                        overpayPct < 0
+                          ? "text-orange-400"
+                          : overpayPct > TRADE_MAX_OVERPAY_PERCENT
+                            ? "text-red-400"
+                            : "text-emerald-400/90"
+                      }`}
+                    >
+                      {overpayPct > 0 ? "+" : ""}
+                      {overpayPct.toFixed(1)}%
+                      <span className="ml-0.5 text-[8px] font-normal text-zinc-500">(0–{TRADE_MAX_OVERPAY_PERCENT}%)</span>
+                    </span>
+                  </div>
+                  <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-800">
+                    <div
+                      ref={mobileOverpayBarFillRef}
+                      className="trade-overpay-bar-fill h-1 rounded-full transition-[width,background-color] duration-300"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={openTradeSubmitModal}
+                  disabled={!canSubmit}
+                  className={`w-full shrink-0 rounded-lg px-3 py-2.5 text-center text-xs font-bold transition-all sm:w-auto sm:self-center ${
+                    canSubmit
+                      ? "bg-amber-600 text-white shadow-lg shadow-amber-600/20 hover:bg-amber-500 active:scale-[0.98]"
+                      : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
+                  }`}
+                >
+                  {t("submitTrade", lang)}
+                </button>
+              </div>
+            </div>
+            <details className="min-w-0 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-2 py-1.5">
+              <summary className="cursor-pointer list-none text-[10px] font-semibold text-zinc-400 [&::-webkit-details-marker]:hidden">
+                <span className="flex items-center justify-between gap-2">
+                  <span>{t("tradeRequirementsSummary", lang)}</span>
+                  {pendingRequirements > 0 ? (
+                    <span className="rounded-full bg-amber-600/20 px-1.5 py-px text-[9px] text-amber-400">{pendingRequirements}</span>
+                  ) : (
+                    <span className="text-[9px] text-emerald-500">✓</span>
+                  )}
+                </span>
+              </summary>
+              <div className="mt-2 space-y-1 border-t border-zinc-800/50 pt-2">
+                {requirementRows.map((row, idx) => (
+                  <ReqLine key={`mreq-${idx}`} done={row.done} text={row.text} issue={row.issue} compact />
+                ))}
+              </div>
+            </details>
+            <p className="text-center text-[8px] leading-snug text-zinc-600">{t("marketWarning", lang)}</p>
+          </div>
+          <div className="grid shrink-0 grid-cols-2 border-b border-zinc-800/80 bg-[#0c0c0e]">
+            <button
+              type="button"
+              onClick={() => switchMobileTab("inventory")}
+              className={`py-3 text-center text-sm font-semibold transition-colors ${
+                mobileTradeTab === "inventory"
+                  ? "border-b-2 border-violet-500 text-violet-300"
+                  : "border-b-2 border-transparent text-zinc-500"
+              }`}
+            >
+              {t("tabMyInventory", lang)}
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMobileTab("market")}
+              className={`py-3 text-center text-sm font-semibold transition-colors ${
+                mobileTradeTab === "market"
+                  ? "border-b-2 border-violet-500 text-violet-300"
+                  : "border-b-2 border-transparent text-zinc-500"
+              }`}
+            >
+              {t("tabMarketChez", lang)}
+            </button>
+          </div>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {mobileTradeTab === "inventory" ? (
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-t border-zinc-800/40">
+                <SelectedStrip
+                  label={t("youGive", lang)}
+                  sublabel={t("yourInventory", lang)}
+                  items={selMyItems}
+                  total={myTotal}
+                  onRemove={(id) => toggle(setSelectedMy, id)}
+                  count={selectedMy.size}
+                  maxPerSide={MAX_TRADE_ITEMS_PER_SIDE}
+                  fmt={fmt}
+                  lang={lang}
+                />
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                  {renderGuestInventoryColumn(mobileInvScrollRef, "mobileTab")}
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-t border-zinc-800/40">
+                <SelectedStrip
+                  label={t("youGet", lang)}
+                  sublabel={t("platformInventory", lang)}
+                  items={selOwnerItems}
+                  total={ownerTotal}
+                  onRemove={(id) => toggle(setSelectedOwner, id)}
+                  count={selectedOwner.size}
+                  maxPerSide={MAX_TRADE_ITEMS_PER_SIDE}
+                  isRight
+                  fmt={fmt}
+                  lang={lang}
+                />
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                  {renderOwnerMarketColumn(mobileMarketScrollRef, "mobileMarket")}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Grid: desktop 3 cols */}
+        <div className="hidden min-h-0 w-full min-w-0 flex-1 lg:grid lg:h-full lg:grid-cols-[minmax(0,39%)_minmax(0,22%)_minmax(0,39%)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
         {/* ─── LEFT: Your Inventory ─── */}
-        <div className="flex min-h-0 w-full min-w-0 flex-col border-b border-zinc-800/50 lg:h-full lg:border-b-0 lg:border-r">
+        <div className="hidden min-h-0 w-full min-w-0 flex-col border-b border-zinc-800/50 lg:flex lg:h-full lg:border-b-0 lg:border-r">
           {/* Selected items strip */}
           <SelectedStrip
             label={t("youGive", lang)}
@@ -920,114 +1518,11 @@ export default function TradePageClient({
             lang={lang}
           />
 
-          {/* Content — each branch gets flex-1 + overflow-y-auto so it always fills the column */}
-          {!authReady ? (
-            <div className="flex w-full flex-col lg:min-h-0 lg:flex-1">
-              <PanelHeader
-                search={mySearch}
-                onSearch={setMySearch}
-                sort={mySort}
-                onSort={setMySort}
-                prefix="my"
-                onRefresh={() => doRefresh("my", setMyRefreshing, setMyCooldown, loadMyInventory)}
-                refreshing={myRefreshing}
-                cooldown={myCooldown}
-                lang={lang}
-                controlsDisabled
-              />
-              <div className="trade-scroll trade-inventory-scroll px-1 py-1 sm:px-2 sm:py-1.5">
-                <ItemGridSkeleton lang={lang} />
-              </div>
-            </div>
-          ) : !isLoggedIn ? (
-            <div className="trade-scroll trade-inventory-scroll flex w-full flex-col items-center justify-start gap-3 px-4 pb-5 pt-3 text-center sm:gap-4 sm:px-6 sm:pb-6 sm:pt-4 lg:min-h-0 lg:flex-1">
-              <div className="text-5xl opacity-20">🎮</div>
-              <p className="max-w-xs text-sm text-zinc-500">{t("loginPrompt", lang)}</p>
-              <a href="/api/auth/steam" className="rounded-lg bg-amber-600 px-6 py-2 text-sm font-semibold text-white hover:bg-amber-500">
-                {t("loginSteam", lang)}
-              </a>
-            </div>
-          ) : !hasTradeUrl || editingTradeUrl ? (
-            <div className="trade-scroll trade-inventory-scroll w-full lg:min-h-0 lg:flex-1">
-              <div className="flex flex-col items-center gap-4 px-6 pb-6 pt-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-600/20 text-2xl">🔗</div>
-                <h3 className="text-base font-bold text-zinc-100">
-                  {hasTradeUrl ? t("updateTradeUrl", lang) : t("pasteTradeUrl", lang)}
-                </h3>
-                <p className="max-w-xs text-center text-xs text-zinc-500">
-                  {isAdmin ? (
-                    t("tradeUrlAdminHint", lang)
-                  ) : (
-                    <>
-                      {t("tradeUrlHint", lang)} <strong className="text-zinc-400">{t("onlyYourOwn", lang)}</strong>
-                    </>
-                  )}
-                </p>
-                <div className="flex w-full max-w-sm flex-col gap-2">
-                  <input
-                    type="text"
-                    placeholder="https://steamcommunity.com/tradeoffer/new/?partner=...&token=..."
-                    className="w-full rounded-lg border-2 border-amber-600/40 bg-zinc-800/80 px-3 py-2.5 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none"
-                    value={tradeUrl}
-                    onChange={(e) => setTradeUrl(e.target.value)}
-                  />
-                  <div className="flex gap-2">
-                    <button onClick={saveTradeUrl} className="flex-1 rounded-lg bg-amber-600 py-2.5 text-xs font-bold text-white hover:bg-amber-500 transition-colors">
-                      {t("saveAndLoad", lang)}
-                    </button>
-                    {hasTradeUrl && (
-                      <button onClick={() => setEditingTradeUrl(false)} className="rounded-lg border border-zinc-700 px-4 py-2.5 text-xs text-zinc-400 hover:text-zinc-200">
-                        {t("cancel", lang)}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <a
-                  href="https://steamcommunity.com/my/tradeoffers/privacy#trade_offer_access_url"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[11px] text-amber-500/70 hover:text-amber-400 hover:underline"
-                >
-                  {t("whereTradeUrl", lang)}
-                </a>
-              </div>
-            </div>
-          ) : (
-            <div className="flex w-full flex-col lg:min-h-0 lg:flex-1">
-              <PanelHeader
-                search={mySearch}
-                onSearch={setMySearch}
-                sort={mySort}
-                onSort={setMySort}
-                prefix="my"
-                onRefresh={() => doRefresh("my", setMyRefreshing, setMyCooldown, loadMyInventory)}
-                refreshing={myRefreshing}
-                cooldown={myCooldown}
-                tradeUrlAction={() => setEditingTradeUrl(true)}
-                lang={lang}
-                controlsDisabled={myInventoryLoading}
-              />
-              <div className="trade-scroll trade-inventory-scroll px-1 py-1 sm:px-2 sm:py-1.5">
-                {myInventoryLoading ? (
-                  <ItemGridSkeleton lang={lang} />
-                ) : (
-                  <ItemGrid
-                    items={filterMy(myItems, mySearch, mySort)}
-                    side="guest"
-                    selected={selectedMy}
-                    onToggle={(id) => toggle(setSelectedMy, id)}
-                    showAssetId={isAdmin}
-                    fmt={fmt}
-                    lang={lang}
-                  />
-                )}
-              </div>
-            </div>
-          )}
+          {renderGuestInventoryColumn(undefined, "page")}
         </div>
 
-        {/* ─── CENTER: lg = internal scroll (.center-scroll); <lg = natural flow + page scroll */}
-        <div className="@container center-scroll flex min-h-0 w-full max-h-none flex-col border-b border-zinc-800/50 bg-[#111113] lg:max-h-full lg:border-b-0">
+        {/* ─── CENTER: desktop only — trade summary + filters */}
+        <div className="@container center-scroll hidden min-h-0 w-full max-h-none flex-col border-b border-zinc-800/50 bg-[#111113] lg:flex lg:max-h-full lg:border-b-0">
           <div className="flex flex-col gap-1 px-1 pt-1 pb-20 sm:gap-1.5 sm:px-1.5 sm:pb-24 lg:min-h-0 lg:gap-2 lg:px-2 lg:pt-2 lg:pb-[120px]">
             {/* Trade analysis */}
             <div className="grid min-w-0 grid-cols-2 gap-1">
@@ -1124,198 +1619,7 @@ export default function TradePageClient({
                 </div>
               </div>
 
-              <div className={tradeFilterCardClass}>
-                <h4 className="mb-2 flex min-w-0 items-center gap-1.5 text-[9px] font-semibold text-zinc-400 sm:text-[10px]">
-                  <span className="shrink-0 font-bold text-amber-500" aria-hidden>
-                    $
-                  </span>
-                  <span className="min-w-0 truncate">{t("invFilterPriceRange", lang)}</span>
-                </h4>
-                <div className="flex min-w-0 items-center gap-2">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    placeholder={t("invFilterMin", lang)}
-                    value={invPriceMinStr}
-                    onChange={(e) => setInvPriceMinStr(e.target.value)}
-                    className="w-full min-w-0 rounded-lg border border-zinc-700/90 bg-zinc-900/90 px-2 py-1.5 text-[9px] text-zinc-100 sm:text-[10px]"
-                  />
-                  <span className="shrink-0 text-zinc-500">—</span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    placeholder={t("invFilterMax", lang)}
-                    value={invPriceMaxStr}
-                    onChange={(e) => setInvPriceMaxStr(e.target.value)}
-                    className="w-full min-w-0 rounded-lg border border-zinc-700/90 bg-zinc-900/90 px-2 py-1.5 text-[9px] text-zinc-100 sm:text-[10px]"
-                  />
-                </div>
-              </div>
-
-              <div className={tradeFilterCardClass}>
-                <h4 className="mb-2 flex min-w-0 items-center gap-1.5 text-[9px] font-semibold text-zinc-400 sm:text-[10px]">
-                  <span className="shrink-0 text-amber-500">◈</span>
-                  <span className="min-w-0 truncate">{t("itemType", lang)}</span>
-                </h4>
-                <div className="grid min-w-0 grid-cols-2 gap-0.5">
-                  {CATEGORY_KEYS.map((cat) => (
-                    <button
-                      key={cat.key}
-                      type="button"
-                      onClick={() => setCategory(cat.key)}
-                      className={`flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-left text-[9px] leading-tight transition-all sm:text-[10px] ${
-                        category === cat.key
-                          ? "border border-amber-600/40 bg-amber-600/20 font-semibold text-amber-400"
-                          : "border border-transparent text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200"
-                      }`}
-                    >
-                      <span className="shrink-0 text-xs sm:text-sm">{cat.icon}</span>
-                      <span className="min-w-0 grow truncate">{t(cat.i18n, lang)}</span>
-                      {category === cat.key && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className={tradeFilterCardClass}>
-                <h4 className="mb-2 flex min-w-0 items-center gap-1.5 text-[9px] font-semibold text-zinc-400 sm:text-[10px]">
-                  <span className="shrink-0 text-amber-500">◈</span>
-                  <span className="min-w-0 truncate">{t("wearLabel", lang)}</span>
-                </h4>
-                <div className="flex min-w-0 flex-wrap gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setWear("All")}
-                    className={`rounded-lg px-2 py-1 text-[9px] font-medium transition-colors sm:text-[10px] ${
-                      wear === "All" ? "border border-amber-600/40 bg-amber-600/20 text-amber-400" : "border border-zinc-800/60 text-zinc-500 hover:text-zinc-300"
-                    }`}
-                  >
-                    {t("wearAll", lang)}
-                  </button>
-                  {WEAR_LABELS.map((w) => (
-                    <button
-                      key={w}
-                      type="button"
-                      onClick={() => setWear(w)}
-                      className={`rounded-lg px-2 py-1 text-[9px] font-medium transition-colors sm:text-[10px] ${
-                        wear === w ? "border border-amber-600/40 bg-amber-600/20 text-amber-400" : "border border-zinc-800/60 text-zinc-500 hover:text-zinc-300"
-                      }`}
-                    >
-                      {WEAR_SHORT[w]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className={tradeFilterCardClass}>
-                <h4 className="mb-2 flex min-w-0 items-center gap-1.5 text-[9px] font-semibold text-zinc-400 sm:text-[10px]">
-                  <span className="shrink-0 text-amber-500" aria-hidden>
-                    ◐
-                  </span>
-                  <span className="min-w-0 truncate">{t("invFilterFloatRange", lang)}</span>
-                </h4>
-                <div
-                  className="mb-2 h-2.5 w-full rounded-full bg-gradient-to-r from-emerald-500 via-amber-400 to-red-600 shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)]"
-                  aria-hidden
-                />
-                <div className="flex flex-col gap-2">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <span className="w-8 shrink-0 text-[8px] font-medium text-zinc-500">{t("invFilterMin", lang)}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={1}
-                      step={0.001}
-                      value={invFloatMin}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        if (!Number.isFinite(v)) return;
-                        const x = Math.max(0, Math.min(1, v));
-                        setInvFloatMin(Math.min(x, invFloatMax));
-                      }}
-                      aria-label={`${t("invFilterFloatRange", lang)} — ${t("invFilterMin", lang)}`}
-                      className="w-[4.25rem] shrink-0 rounded-lg border border-zinc-700/90 bg-zinc-900/90 px-1.5 py-1 text-[9px] text-zinc-100"
-                    />
-                    <input
-                      type="range"
-                      min={0}
-                      max={1000}
-                      step={1}
-                      value={Math.round(invFloatMin * 1000)}
-                      onChange={(e) => {
-                        const step = Number(e.target.value);
-                        setInvFloatMin(Math.min(step / 1000, invFloatMax));
-                      }}
-                      aria-label={`${t("invFilterFloatRange", lang)} — ${t("invFilterMin", lang)}`}
-                      className="min-w-0 grow accent-emerald-500"
-                    />
-                  </div>
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <span className="w-8 shrink-0 text-[8px] font-medium text-zinc-500">{t("invFilterMax", lang)}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={1}
-                      step={0.001}
-                      value={invFloatMax}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        if (!Number.isFinite(v)) return;
-                        const x = Math.max(0, Math.min(1, v));
-                        setInvFloatMax(Math.max(x, invFloatMin));
-                      }}
-                      aria-label={`${t("invFilterFloatRange", lang)} — ${t("invFilterMax", lang)}`}
-                      className="w-[4.25rem] shrink-0 rounded-lg border border-zinc-700/90 bg-zinc-900/90 px-1.5 py-1 text-[9px] text-zinc-100"
-                    />
-                    <input
-                      type="range"
-                      min={0}
-                      max={1000}
-                      step={1}
-                      value={Math.round(invFloatMax * 1000)}
-                      onChange={(e) => {
-                        const step = Number(e.target.value);
-                        setInvFloatMax(Math.max(step / 1000, invFloatMin));
-                      }}
-                      aria-label={`${t("invFilterFloatRange", lang)} — ${t("invFilterMax", lang)}`}
-                      className="min-w-0 grow accent-red-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className={tradeFilterCardClass}>
-                <h4 className="mb-2.5 text-[10px] font-semibold tracking-tight text-zinc-300 sm:text-[11px]">{t("invFilterOthers", lang)}</h4>
-                <div className="flex flex-col gap-2">
-                  <label className="flex cursor-pointer items-center gap-2.5 text-[9px] text-zinc-300 sm:text-[10px]">
-                    <input
-                      type="checkbox"
-                      checked={invShowStatTrak}
-                      onChange={(e) => setInvShowStatTrak(e.target.checked)}
-                      className="h-3.5 w-3.5 shrink-0 rounded border-zinc-600 bg-zinc-900 accent-amber-500"
-                    />
-                    {t("invFilterStatTrak", lang)}
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2.5 text-[9px] text-zinc-300 sm:text-[10px]">
-                    <input
-                      type="checkbox"
-                      checked={invShowSouvenir}
-                      onChange={(e) => setInvShowSouvenir(e.target.checked)}
-                      className="h-3.5 w-3.5 shrink-0 rounded border-zinc-600 bg-zinc-900 accent-amber-500"
-                    />
-                    {t("invFilterSouvenir", lang)}
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2.5 text-[9px] text-zinc-300 sm:text-[10px]">
-                    <input
-                      type="checkbox"
-                      checked={invShowTradeLocked}
-                      onChange={(e) => setInvShowTradeLocked(e.target.checked)}
-                      className="h-3.5 w-3.5 shrink-0 rounded border-zinc-600 bg-zinc-900 accent-amber-500"
-                    />
-                    {t("invFilterTradeLocked", lang)}
-                  </label>
-                </div>
-              </div>
+              {marketFilterForm}
             </div>
 
             {/* Hint only — no flex-1 (avoids stretching center column past grid / under footer) */}
@@ -1328,7 +1632,7 @@ export default function TradePageClient({
         </div>
 
         {/* ─── RIGHT: Store Inventory ─── */}
-        <div className="flex min-h-0 w-full min-w-0 flex-col border-l-0 lg:h-full lg:border-l lg:border-zinc-800/50">
+        <div className="hidden min-h-0 w-full min-w-0 flex-col border-l-0 lg:flex lg:h-full lg:border-l lg:border-zinc-800/50">
           <SelectedStrip
             label={t("youGet", lang)}
             sublabel={t("platformInventory", lang)}
@@ -1341,41 +1645,44 @@ export default function TradePageClient({
             fmt={fmt}
             lang={lang}
           />
-
-          <div className="flex w-full flex-col lg:min-h-0 lg:flex-1">
-            <PanelHeader
-              search={ownerSearch}
-              onSearch={setOwnerSearch}
-              sort={ownerSort}
-              onSort={setOwnerSort}
-              prefix="owner"
-              onRefresh={() => doRefresh("owner", setOwnerRefreshing, setOwnerCooldown, loadOwner)}
-              refreshing={ownerRefreshing}
-              cooldown={ownerCooldown}
-              lang={lang}
-              controlsDisabled={ownerInventoryLoading}
-              showRefreshButton={isAdmin}
-            />
-            <div className="trade-scroll trade-inventory-scroll px-1 py-1 sm:px-2 sm:py-1.5">
-              {ownerInventoryLoading ? (
-                <ItemGridSkeleton lang={lang} />
-              ) : (
-                <ItemGrid
-                  items={filterOwner(ownerItems, ownerSearch, ownerSort)}
-                  side="owner"
-                  selected={selectedOwner}
-                  onToggle={(id) => toggle(setSelectedOwner, id)}
-                  onLockedItemClick={showLockedTapNotice}
-                  showAssetId={isAdmin}
-                  fmt={fmt}
-                  lang={lang}
-                />
-              )}
-            </div>
-          </div>
+          {renderOwnerMarketColumn(undefined, "desktop")}
         </div>
         </div>
       </main>
+
+      {mobileFiltersOpen ? (
+        <div className="fixed inset-0 z-[190] lg:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/70 backdrop-blur-[2px]"
+            aria-label={t("filtersClose", lang)}
+            onClick={() => setMobileFiltersOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mobile-filters-title"
+            className="absolute inset-x-0 bottom-0 z-[191] flex max-h-[min(88dvh,720px)] flex-col rounded-t-2xl border border-zinc-700/80 bg-[#141416] shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-4 py-3">
+              <h2 id="mobile-filters-title" className="text-sm font-semibold text-zinc-100">
+                {t("filtersSheetTitle", lang)}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(false)}
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-violet-400 hover:bg-zinc-800"
+              >
+                {t("filtersClose", lang)}
+              </button>
+            </div>
+            <div className="trade-scroll min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-3 py-3 pb-6">
+              {marketFilterForm}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Footer: flex sibling after flex-1 main — no mt-auto (avoids overlap with fixed-dvh column layout) */}
       <footer className="w-full shrink-0 border-t border-zinc-800/60 bg-[#0a0a0c] px-3 py-2 sm:px-5 sm:py-2.5 lg:px-8">
@@ -1761,6 +2068,9 @@ function PanelHeader({
   onRefresh, refreshing, cooldown, tradeUrlAction, lang: l,
   controlsDisabled,
   showRefreshButton = true,
+  searchPlaceholder,
+  variant = "default",
+  onOpenFilters,
 }: {
   search: string; onSearch: (v: string) => void;
   sort: string; onSort: (v: string) => void;
@@ -1770,31 +2080,98 @@ function PanelHeader({
   controlsDisabled?: boolean;
   /** Store inventory: only admins see manual Steam refresh. */
   showRefreshButton?: boolean;
+  searchPlaceholder?: string;
+  variant?: "default" | "marketMobile";
+  onOpenFilters?: () => void;
 }) {
   const frozen = !!controlsDisabled;
+  const ph = searchPlaceholder ?? t("searchPlaceholder", l);
+  const searchInput = (
+    <div className="relative min-w-0 flex-1">
+      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-zinc-600">🔍</span>
+      <input
+        type="text"
+        placeholder={ph}
+        className="w-full rounded-lg border border-zinc-800/60 bg-zinc-900/60 py-1.5 pl-8 pr-3 text-xs text-zinc-200 placeholder-zinc-600 focus:border-amber-700/40 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        value={search}
+        onChange={(e) => onSearch(e.target.value)}
+        disabled={frozen}
+      />
+    </div>
+  );
+  const sortSelect = (
+    <select
+      aria-label={`${prefix}-sort`}
+      className="shrink-0 rounded-lg border border-zinc-800/60 bg-zinc-900/60 px-2 py-1.5 text-[11px] text-zinc-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 max-[380px]:max-w-[38vw]"
+      value={sort}
+      onChange={(e) => onSort(e.target.value)}
+      disabled={frozen}
+    >
+      {SORT_KEYS.map((s) => (
+        <option key={s.key} value={s.key}>
+          {t(s.i18n, l)}
+        </option>
+      ))}
+    </select>
+  );
+  if (variant === "marketMobile" && onOpenFilters) {
+    return (
+      <div className="shrink-0 border-b border-zinc-800/50 bg-[#0f0f11] px-2.5 py-1.5 sm:px-3 sm:py-2">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+          {searchInput}
+          <button
+            type="button"
+            onClick={onOpenFilters}
+            disabled={frozen}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-violet-600/35 bg-violet-600/10 text-violet-300 transition-colors hover:bg-violet-600/20 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label={t("filtersSheetTitle", l)}
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path
+                strokeLinecap="round"
+                d="M4 6h16M7 12h10M10 18h4"
+              />
+              <circle cx="18" cy="6" r="1.5" fill="currentColor" stroke="none" />
+              <circle cx="6" cy="12" r="1.5" fill="currentColor" stroke="none" />
+              <circle cx="14" cy="18" r="1.5" fill="currentColor" stroke="none" />
+            </svg>
+          </button>
+          {sortSelect}
+          {showRefreshButton ? (
+            <div
+              className={`relative inline-flex shrink-0 rounded-lg ${cooldown > 0 && !refreshing ? "group/refcd cursor-not-allowed" : ""}`}
+              title={cooldown > 0 && !refreshing ? `${t("nextRefreshIn", l)} ${formatRefreshCooldown(cooldown, l)}` : undefined}
+            >
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={frozen || refreshing || cooldown > 0}
+                className={`rounded-lg border p-1.5 text-xs transition-colors ${frozen || cooldown > 0 || refreshing ? "border-zinc-800 text-zinc-700 cursor-not-allowed" : "border-zinc-800/60 text-zinc-500 hover:text-zinc-300"}`}
+                aria-label={cooldown > 0 ? `${t("nextRefreshIn", l)} ${formatRefreshCooldown(cooldown, l)}` : t("refreshInventory", l)}
+              >
+                <span className={refreshing ? "inline-block animate-spin" : ""}>↻</span>
+              </button>
+              {cooldown > 0 && !refreshing && (
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 w-max max-w-[min(240px,calc(100vw-24px))] -translate-x-1/2 rounded-md border border-zinc-600/90 bg-zinc-950 px-2 py-1.5 text-center text-[10px] leading-snug text-zinc-100 opacity-0 shadow-xl transition-opacity duration-150 group-hover/refcd:opacity-100"
+                >
+                  {t("nextRefreshIn", l)}
+                  <br />
+                  <span className="font-semibold text-amber-400/90">{formatRefreshCooldown(cooldown, l)}</span>
+                </span>
+              )}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="shrink-0 border-b border-zinc-800/50 bg-[#0f0f11] px-2.5 py-1.5 sm:px-3 sm:py-2">
       <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600 text-xs">🔍</span>
-          <input
-            type="text"
-            placeholder={t("searchPlaceholder", l)}
-            className="w-full rounded-lg border border-zinc-800/60 bg-zinc-900/60 py-1.5 pl-8 pr-3 text-xs text-zinc-200 placeholder-zinc-600 focus:border-amber-700/40 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-            value={search}
-            onChange={(e) => onSearch(e.target.value)}
-            disabled={frozen}
-          />
-        </div>
-        <select
-          aria-label={`${prefix}-sort`}
-          className="rounded-lg border border-zinc-800/60 bg-zinc-900/60 px-2 py-1.5 text-[11px] text-zinc-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-          value={sort}
-          onChange={(e) => onSort(e.target.value)}
-          disabled={frozen}
-        >
-          {SORT_KEYS.map((s) => <option key={s.key} value={s.key}>{t(s.i18n, l)}</option>)}
-        </select>
+        {searchInput}
+        {sortSelect}
         {showRefreshButton ? (
           <div
             className={`relative inline-flex rounded-lg ${cooldown > 0 && !refreshing ? "group/refcd cursor-not-allowed" : ""}`}

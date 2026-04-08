@@ -13,6 +13,16 @@ const T: Translations = {
   youGet: { ru: "Вы получаете", en: "You get", zh: "您获得" },
   yourInventory: { ru: "Ваш инвентарь", en: "Your inventory", zh: "您的库存" },
   platformInventory: { ru: "Инвентарь платформы", en: "Platform inventory", zh: "平台库存" },
+  tabMyInventory: { ru: "Мой инвентарь", en: "My inventory", zh: "我的库存" },
+  tabMarketChez: { ru: "CHEZ", en: "CHEZ", zh: "CHEZ" },
+  filtersSheetTitle: { ru: "Фильтры предметов", en: "Item filters", zh: "物品筛选" },
+  filtersClose: { ru: "Готово", en: "Done", zh: "完成" },
+  tradeRequirementsSummary: { ru: "Требования к обмену", en: "Trade requirements", zh: "交易条件" },
+  findToBuyPlaceholder: {
+    ru: "Найди, что купить...",
+    en: "Find something to buy...",
+    zh: "搜索想买的物品...",
+  },
   lockedUntilPrefix: { ru: "Заблокирован до", en: "Locked until", zh: "锁定至" },
   lockedNoDate: { ru: "Заблокировано", en: "Locked", zh: "已锁定" },
   /** One-line hint on locked (admin) cards when `tradeLockUntil` is missing */

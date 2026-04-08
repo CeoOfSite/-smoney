@@ -90,6 +90,17 @@ body {
   }
 }
 
+/* Trade page: mobile tab panels — scroll inside tab, not the whole page */
+@media (max-width: 1023px) {
+  .trade-mobile-tab-scroll {
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+  }
+}
+
 /* Center column: mobile/tablet — document flow; lg+ — internal scroll + thin bar */
 .center-scroll {
   overflow-x: hidden;
