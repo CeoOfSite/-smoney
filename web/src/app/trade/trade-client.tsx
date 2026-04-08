@@ -207,7 +207,6 @@ export default function TradePageClient({
   const [tradeModalError, setTradeModalError] = useState<string | null>(null);
   const [tradeModalCreatedId, setTradeModalCreatedId] = useState<string | null>(null);
   const [manualOwnerTradeUrl, setManualOwnerTradeUrl] = useState<string | null>(null);
-  const [manualSteamLinkClicked, setManualSteamLinkClicked] = useState(false);
   const tradeModalSnapshotRef = useRef<{ guest: string[]; owner: string[] } | null>(null);
 
   const [ownerRefreshing, setOwnerRefreshing] = useState(false);
@@ -338,9 +337,13 @@ export default function TradePageClient({
     setManualChecklistGuest([]);
     setManualChecklistOwner([]);
     setManualOwnerTradeUrl(null);
-    setManualSteamLinkClicked(false);
     tradeModalSnapshotRef.current = null;
   }, []);
+
+  const openManualOwnerSteamTrade = useCallback(() => {
+    if (!manualOwnerTradeUrl) return;
+    window.open(manualOwnerTradeUrl, "_blank", "noopener,noreferrer");
+  }, [manualOwnerTradeUrl]);
 
   const openTradeSubmitModal = useCallback(() => {
     setError(null);
@@ -376,7 +379,6 @@ export default function TradePageClient({
     setTradeModalCreatedId(r.tradeId && r.tradeId.length > 0 ? r.tradeId : null);
     setSelectedMy(new Set());
     setSelectedOwner(new Set());
-    setManualSteamLinkClicked(false);
     setManualOwnerTradeUrl(typeof r.ownerTradeUrl === "string" && r.ownerTradeUrl.length > 0 ? r.ownerTradeUrl : null);
     if (!r.ownerTradeUrl) {
       setTradeSubmitError(t("tradeSubmitNoStoreUrl", lang));
@@ -1773,6 +1775,23 @@ export default function TradePageClient({
               ) : tradeSubmitModalPhase === "manual_checklist" ? (
                 <div className="space-y-4">
                   <p className="text-xs leading-relaxed text-zinc-400 sm:text-sm">{t("tradeSubmitManualChecklistLead", lang)}</p>
+                  {manualOwnerTradeUrl ? (
+                    <div className="space-y-2">
+                      <p className="text-center text-[11px] font-medium text-zinc-400 sm:text-xs">
+                        {t("tradeSubmitManualSteamStep1Hint", lang)}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={openManualOwnerSteamTrade}
+                        className="flex w-full items-center justify-center rounded-xl bg-amber-600 px-4 py-3.5 text-sm font-bold text-white shadow-lg shadow-amber-600/20 transition-colors hover:bg-amber-500 active:scale-[0.99]"
+                      >
+                        {t("tradeSubmitGoToSteamTrade", lang)}
+                      </button>
+                      <p className="text-center text-[11px] leading-snug text-zinc-500 sm:text-xs">
+                        {t("tradeSubmitManualConfirmHint", lang)}
+                      </p>
+                    </div>
+                  ) : null}
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="min-w-0 rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
                       <p className="text-xs font-bold text-zinc-200">{t("tradeSubmitManualYourItemsHeading", lang)}</p>
@@ -1816,22 +1835,13 @@ export default function TradePageClient({
                       </p>
                       <button
                         type="button"
-                        onClick={() => {
-                          window.open(manualOwnerTradeUrl, "_blank", "noopener,noreferrer");
-                          setManualSteamLinkClicked(true);
-                        }}
+                        onClick={openManualOwnerSteamTrade}
                         className="flex w-full items-center justify-center rounded-xl bg-amber-600 px-4 py-3.5 text-sm font-bold text-white shadow-lg shadow-amber-600/20 transition-colors hover:bg-amber-500 active:scale-[0.99]"
                       >
                         {t("tradeSubmitGoToSteamTrade", lang)}
                       </button>
-                      {manualSteamLinkClicked ? (
-                        <p className="text-center text-[11px] leading-snug text-violet-300/95 sm:text-xs" role="status">
-                          {t("tradeSubmitReturnAfterSteamHint", lang)}
-                        </p>
-                      ) : null}
                     </div>
                   ) : null}
-                  <p className="text-center text-[11px] leading-snug text-zinc-500">{t("tradeSubmitManualConfirmHint", lang)}</p>
                   <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-center">
                     {tradeModalCreatedId ? (
                       <Link

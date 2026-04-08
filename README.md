@@ -1,54 +1,90 @@
+# ChezTrading (CSmoney)
 
+Платформа для обмена скинами **CS2**: витрина магазина (CHEZ), инвентарь пользователя после входа через **Steam**, оформление трейда и связанные API.
 
-## Приложение
+## Стек
 
-Код сайта — в каталоге **`web/`** (Next.js + Prisma + PostgreSQL).
+- **Next.js** (App Router)
+- **React**
+- **Prisma** + **PostgreSQL**
+- **Tailwind CSS** v4
+- **Redis** (опционально, кэш инвентаря)
 
-### Быстрый старт (разработка)
+## Установка и запуск
 
-1. Установите зависимости:
+Рабочая директория приложения — **`web/`**.
 
-   ```bash
-   cd web
-   npm install
-   ```
+```bash
+cd web
+npm install
+```
 
-2. Создайте `web/.env` на основе `web/.env.example` и укажите `DATABASE_URL`.
+Создайте **`web/.env`** по образцу **`web/.env.example`** (минимум `DATABASE_URL`, см. ниже).
 
-   Локально можно поднять Postgres:
+Первый раз — миграции:
 
-   ```bash
-   cd ..
-   docker compose up -d
-   ```
+```bash
+npx prisma migrate dev
+```
 
-   Пример строки:
+Запуск в режиме разработки:
 
-   ```env
-   DATABASE_URL="postgresql://csmoney:csmoney@localhost:5432/csmoney"
-   ```
+```bash
+npm run dev
+```
 
-3. Примените схему к базе (первый раз):
+Сайт: [http://localhost:3000](http://localhost:3000). Проверка БД: [http://localhost:3000/api/health](http://localhost:3000/api/health).
 
-   ```bash
-   cd web
-   npx prisma migrate dev --name init
-   ```
+Локально Postgres можно поднять из корня репозитория: `docker compose up -d` (см. `docker-compose` в репо).
 
-   Либо без файлов миграций (только для пробы):
+## Структура проекта
 
-   ```bash
-   npx prisma db push
-   ```
+```text
+web/
+  src/
+    app/           — маршруты Next.js, layout, API routes (app/api/…)
+    app/globals.css — глобальные стили + Tailwind
+    components/    — переиспользуемые UI (если вынесены из app)
+    lib/             — утилиты, i18n, Prisma, бизнес-логика
+  prisma/          — schema и миграции
+  public/          — статика
+  scripts/         — render-start, render-release и др.
+```
 
-4. Запуск:
+Крупный UI трейда частично живёт в **`app/trade/`** (страница + CSS-модуль) и в **`trade-client.tsx`**.
 
-   ```bash
-   npm run dev
-   ```
+## Где что менять
 
-Откройте [http://localhost:3000](http://localhost:3000). Проверка БД: [http://localhost:3000/api/health](http://localhost:3000/api/health).
+| Что | Где |
+|-----|-----|
+| UI страницы трейда | `web/src/app/trade/` |
+| Основная логика/сетка трейда, фильтры маркета | `web/src/app/trade/trade-client.tsx` |
+| Общие компоненты | `web/src/components/` |
+| API | `web/src/app/api/` |
+| Переводы | `web/src/lib/i18n.ts` |
 
-### Деплой
+## Переменные окружения
 
-На хостинге (Vercel, Render и т.д.) задайте переменную `DATABASE_URL`, выполните миграции (`prisma migrate deploy`) в шаге сборки или отдельной командой — по инструкции выбранной платформы.
+Значения не коммитить. Полный список и комментарии — в **`web/.env.example`**.
+
+Основные:
+
+- `DATABASE_URL`
+- `SESSION_SECRET`
+- `NEXT_PUBLIC_APP_URL`
+- `STEAM_WEB_API_KEY`
+- `OWNER_STEAM_ID` (инвентарь витрины)
+- `REDIS_URL` (опционально)
+- `ADMIN_STEAM_IDS`, `CRON_SECRET`, `PRICEMPIRE_API_KEY`, `EXCHANGE_RATE_API_KEY` — по необходимости
+
+## Деплой (Render)
+
+- **Build:** `npm run build` (в каталоге `web/`: `prisma generate` + `next build`)
+- **Start:** `npm start` → `scripts/render-start.mjs`
+- **Миграции в проде:** отдельной командой релиза — **`npm run render:release`** (`prisma migrate deploy`), не блокируя долгий старт веб-сервиса
+
+## Важно
+
+- Логику трейда и баланса не менять без понимания последствий.
+- Фильтры цены / float / «Others» на странице трейда применяются **только к маркету (CHEZ)**, не к инвентарю пользователя.
+- Prisma на проде: предпочтительно **`npm run render:release`** (или эквивалент с `prisma migrate deploy`).

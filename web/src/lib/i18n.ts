@@ -126,10 +126,10 @@ const T: Translations = {
     en: "Go to create the trade",
     zh: "前往创建交易",
   },
-  tradeSubmitReturnAfterSteamHint: {
-    ru: "После отправки обмена вернитесь сюда и нажмите «Открыть в истории».",
-    en: "After you send the offer, return here and tap “Open in history”.",
-    zh: "发送报价后请返回此处并点击「在历史中查看」。",
+  tradeSubmitManualSteamStep1Hint: {
+    ru: "Шаг 1: Перейдите в Steam",
+    en: "Step 1: Open Steam",
+    zh: "第一步：打开 Steam",
   },
   tradeSubmitManualYourItemsHeading: {
     ru: "Ваши предметы",
@@ -153,9 +153,9 @@ const T: Translations = {
   },
   tradeSubmitPattern: { ru: "Паттерн", en: "Pattern", zh: "图案" },
   tradeSubmitManualConfirmHint: {
-    ru: 'After you send the offer in Steam, click the button "I sent the trade"',
-    en: 'After you send the offer in Steam, click the button "I sent the trade"',
-    zh: 'After you send the offer in Steam, click the button "I sent the trade"',
+    ru: 'After you send the offer in Steam, click the button "I sent the trade" or "Open in history" to check status of the offer.',
+    en: 'After you send the offer in Steam, click the button "I sent the trade" or "Open in history" to check status of the offer.',
+    zh: 'After you send the offer in Steam, click the button "I sent the trade" or "Open in history" to check status of the offer.',
   },
   tradeSubmitManualConfirmBtn: {
     ru: "Я отправил обмен",

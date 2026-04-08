@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CS2 trade MVP",
+  title: "Chez.Trading - Trade CS2 skins fast",
   description: "Ручной обмен скинами CS2",
 };
 
