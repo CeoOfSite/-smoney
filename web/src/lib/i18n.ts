@@ -153,9 +153,9 @@ const T: Translations = {
   },
   tradeSubmitPattern: { ru: "Паттерн", en: "Pattern", zh: "图案" },
   tradeSubmitManualConfirmHint: {
-    ru: "Когда отправите трейд в Steam, нажмите кнопку — только после этого окно закроется.",
-    en: "After you send the offer in Steam, click the button — the dialog closes only then.",
-    zh: "在 Steam 发送报价后点击按钮——届时才会关闭此窗口。",
+    ru: 'After you send the offer in Steam, click the button "I sent the trade"',
+    en: 'After you send the offer in Steam, click the button "I sent the trade"',
+    zh: 'After you send the offer in Steam, click the button "I sent the trade"',
   },
   tradeSubmitManualConfirmBtn: {
     ru: "Я отправил обмен",

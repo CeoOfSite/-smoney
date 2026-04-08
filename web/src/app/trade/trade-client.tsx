@@ -1630,8 +1630,8 @@ export default function TradePageClient({
 
       {/* Footer: flex sibling after flex-1 main — no mt-auto (avoids overlap with fixed-dvh column layout) */}
       <footer className="w-full shrink-0 border-t border-zinc-800/60 bg-[#0a0a0c] px-3 py-2 sm:px-5 sm:py-2.5 lg:px-8">
-        <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <div className="min-w-0 shrink-0 sm:max-w-[32%]">
+        <div className="grid w-full min-w-0 grid-cols-1 gap-y-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-x-4 sm:gap-y-0">
+          <div className="min-w-0 justify-self-start sm:max-w-none">
             <span className="text-xs font-bold tracking-tight text-amber-500 sm:text-sm">CHEZ<span className="text-zinc-400">TRADING</span></span>
             <p className="mt-0.5 max-w-full text-balance text-[9px] leading-snug text-zinc-600 sm:text-[10px]">
               © 2024–{new Date().getFullYear()} ChezTrading. {t("footerRights", lang)}
@@ -1666,7 +1666,7 @@ export default function TradePageClient({
           </div>
 
           <nav
-            className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[9px] text-zinc-600 sm:justify-center sm:gap-x-5 sm:text-[10px] lg:gap-x-6"
+            className="flex w-full min-w-0 flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center text-[9px] text-zinc-600 sm:w-auto sm:text-[10px]"
             aria-label="Legal"
           >
             <Link href="/terms" className="shrink-0 text-zinc-600 hover:text-zinc-400">
@@ -1679,6 +1679,8 @@ export default function TradePageClient({
               {t("footerCookies", lang)}
             </Link>
           </nav>
+          {/* Balances the left column so legal links sit at true viewport center on sm+ */}
+          <div className="hidden min-w-0 sm:block" aria-hidden />
         </div>
 
         <div className="mt-2 w-full min-w-0 border-t border-zinc-800/40 px-1 pt-2 text-center text-[8px] leading-snug text-zinc-700 sm:mt-2.5 sm:px-3 sm:pt-2 sm:text-[9px]">
