@@ -533,7 +533,9 @@ export default function TradePageClient({
         setMyCooldown(Math.ceil(data.refreshCooldownRemainingMs / 1000));
       }
     } else if (data?.error !== "trade_url_required" && data?.error !== "unauthorized")
-      setError(`${t("errorInventory", lang)}: ${data?.error ?? t("errorGeneric", lang)}`);
+      setError(
+        `${t("errorInventory", lang)}: ${typeof data?.message === "string" ? data.message : (data?.error ?? t("errorGeneric", lang))}`,
+      );
   }, [lang]);
 
   useEffect(() => {

@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
-import { resolveGuestInventoryTargetSteamId } from "@/lib/guest-inventory-target";
+import { resolveGuestInventoryTargetSteamId, TRADE_URL_SHOP_OWNER_MESSAGE } from "@/lib/guest-inventory-target";
 import { invalidateCache } from "@/lib/inventory-cache";
 import { prisma } from "@/lib/prisma";
 import { parseTradeUrl, trySteamId64FromPartner } from "@/lib/steam-inventory";
@@ -13,7 +13,7 @@ import { parseTradeUrl, trySteamId64FromPartner } from "@/lib/steam-inventory";
 export const dynamic = "force-dynamic";
 
 /** Bump when changing admin / validation behavior (verify all instances return it in JSON). */
-const TRADE_URL_API_VERSION = "v2_admin_bypass_check" as const;
+const TRADE_URL_API_VERSION = "v3_reject_shop_owner_trade_url" as const;
 
 export async function POST(request: NextRequest) {
   const user = await getSessionUser();
@@ -71,6 +71,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const ownerSteamId = process.env.OWNER_STEAM_ID?.trim();
+  if (ownerSteamId && derivedSteamId === ownerSteamId) {
+    return NextResponse.json(
+      {
+        error: "trade_url_shop_owner",
+        version: TRADE_URL_API_VERSION,
+        message: TRADE_URL_SHOP_OWNER_MESSAGE,
+      },
+      { status: 400 },
+    );
+  }
+
   const isAdmin = row.isAdmin === true;
   const ownershipMismatch = derivedSteamId !== row.steamId;
 
@@ -98,17 +110,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const targetSteamId = isAdmin ? derivedSteamId : row.steamId;
-
   const beforeActor = {
     steamId: user.steamId,
     tradeUrl: user.tradeUrl,
-    isAdmin: row.isAdmin === true,
   };
   const afterActor = {
     steamId: user.steamId,
     tradeUrl: tradeUrl.trim(),
-    isAdmin: row.isAdmin === true,
   };
 
   await prisma.user.update({
@@ -116,7 +124,7 @@ export async function POST(request: NextRequest) {
     data: { tradeUrl: tradeUrl.trim() },
   });
 
-  const cacheKeys = new Set<string>([user.steamId, targetSteamId]);
+  const cacheKeys = new Set<string>([user.steamId, derivedSteamId]);
   const oldT = resolveGuestInventoryTargetSteamId(beforeActor);
   const newT = resolveGuestInventoryTargetSteamId(afterActor);
   if (oldT) cacheKeys.add(oldT);

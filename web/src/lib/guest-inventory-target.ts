@@ -2,19 +2,74 @@ import type { User } from "@prisma/client";
 
 import { parseTradeUrl, trySteamId64FromPartner } from "@/lib/steam-inventory";
 
-export type GuestInventoryActor = Pick<User, "steamId" | "tradeUrl" | "isAdmin">;
+export type GuestInventoryActor = Pick<User, "steamId" | "tradeUrl">;
+
+export type GuestTradeUrlResolution =
+  | { kind: "none" }
+  | { kind: "invalid" }
+  | { kind: "shop_owner" }
+  | { kind: "ok"; derivedSteamId: string };
+
+/** Сообщение для API, если partner в ссылке — владелец магазина (guest не может совпадать с owner). */
+export const TRADE_URL_SHOP_OWNER_MESSAGE =
+  "Эта ссылка ведёт на инвентарь магазина. Укажите свою trade-ссылку — ваша сторона обмена не может совпадать с владельцем." as const;
+
+function normalizedOwnerSteamId(): string | null {
+  const o = process.env.OWNER_STEAM_ID?.trim();
+  return o && o.length > 0 ? o : null;
+}
 
 /**
- * SteamID64 used as cache key and inventory-owner context for the saved trade URL.
- * - Admin: owner encoded in the URL (`derivedSteamId` from `partner`).
- * - Regular user: signed-in account; URL is validated to match that account on save.
+ * Разбор trade URL для гостевого инвентаря: нельзя использовать ссылку на OWNER_STEAM_ID
+ * (кэш, цены и UI ломаются при guest === owner).
+ */
+export function resolveGuestTradeUrl(user: GuestInventoryActor): GuestTradeUrlResolution {
+  if (!user.tradeUrl?.trim()) return { kind: "none" };
+  const parsed = parseTradeUrl(user.tradeUrl.trim());
+  if (!parsed) return { kind: "invalid" };
+  const derivedSteamId = trySteamId64FromPartner(parsed.partner);
+  if (!derivedSteamId) return { kind: "invalid" };
+  const owner = normalizedOwnerSteamId();
+  if (owner && derivedSteamId === owner) return { kind: "shop_owner" };
+  return { kind: "ok", derivedSteamId };
+}
+
+/**
+ * SteamID64 владельца инвентаря по сохранённой trade URL (partner → SteamID64).
+ * Если URL есть и парсится — `derivedSteamId`, никогда `user.steamId`.
+ * Ссылка на инвентарь магазина (OWNER_STEAM_ID) не считается валидной для гостя.
  */
 export function resolveGuestInventoryTargetSteamId(user: GuestInventoryActor): string | null {
+  const r = resolveGuestTradeUrl(user);
+  return r.kind === "ok" ? r.derivedSteamId : null;
+}
+
+/** Если в профиле есть trade URL, но он не даёт валидного гостевого инвентаря — код и текст для 400. */
+export function guestTradeUrlHttpRejection(user: GuestInventoryActor): {
+  error: string;
+  message: string;
+} | null {
   if (!user.tradeUrl?.trim()) return null;
-  const parsed = parseTradeUrl(user.tradeUrl.trim());
-  if (!parsed) return null;
-  const derivedSteamId = trySteamId64FromPartner(parsed.partner);
-  if (!derivedSteamId) return null;
-  const targetSteamId = user.isAdmin ? derivedSteamId : user.steamId;
-  return targetSteamId;
+  const r = resolveGuestTradeUrl(user);
+  if (r.kind === "shop_owner") {
+    return { error: "trade_url_shop_owner", message: TRADE_URL_SHOP_OWNER_MESSAGE };
+  }
+  if (r.kind === "invalid") {
+    return {
+      error: "invalid_trade_url",
+      message: "Сохранённая trade-ссылка некорректна. Укажите ссылку заново.",
+    };
+  }
+  return null;
+}
+
+/** Защита на случай рассинхрона env / старого кэша. */
+export function warnIfGuestSteamIdEqualsOwner(context: string, guestSteamId: string | null): void {
+  const owner = normalizedOwnerSteamId();
+  if (!guestSteamId || !owner) return;
+  if (guestSteamId === owner) {
+    console.warn(`[${context}] guest == owner BUG: derived guestSteamId matches OWNER_STEAM_ID`, {
+      guestSteamId,
+    });
+  }
 }

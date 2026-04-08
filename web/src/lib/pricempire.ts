@@ -186,7 +186,7 @@ function pickCatalogRow(
 
 /**
  * Single base (USD cents) for an item, then side-specific multipliers:
- * - guest: base × (1 − markupGuestPercent/100)
+ * - guest: base × (1 + markupGuestPercent/100) — отрицательный % снижает цену, положительный повышает
  * - owner: base × (1 + markupOwnerPercent/100)
  */
 function applySideMarkupFromBase(
@@ -197,8 +197,8 @@ function applySideMarkupFromBase(
   if (side === "owner") {
     return Math.round(baseCents * (1 + settings.markupOwnerPercent / 100));
   }
-  const discounted = Math.round(baseCents * (1 - settings.markupGuestPercent / 100));
-  return Math.max(0, discounted);
+  const guestCents = Math.round(baseCents * (1 + settings.markupGuestPercent / 100));
+  return Math.max(0, guestCents);
 }
 
 /** basePrice = custom ?? api; then guest/owner markups from settings. */

@@ -200,22 +200,23 @@ export default function AdminPricingPage() {
 
           <label className="block">
             <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-              Скидка от базы для пользователя (левая колонка, %)
+              Коррекция цены для пользователя (левая колонка, %)
             </span>
             <input
               type="number"
               step="0.1"
               className={input}
               value={settings.markupGuestPercent}
-              onChange={(e) =>
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
                 setSettings({
                   ...settings,
-                  markupGuestPercent: parseFloat(e.target.value) || 0,
-                })
-              }
+                  markupGuestPercent: Number.isFinite(v) ? v : 0,
+                });
+              }}
             />
             <span className="mt-0.5 block text-[10px] text-zinc-400">
-              Цена гостя = база × (1 − % / 100). Пример: база $100, 3.5% → $96.50
+              Цена гостя = база × (1 + % / 100). Примеры при базе $100: −3.5% → $96.50; +3.5% → $103.50
             </span>
           </label>
 
@@ -272,7 +273,7 @@ export default function AdminPricingPage() {
         <p className="mt-1 text-xs text-zinc-500">
           Привязка по <strong className="text-zinc-600 dark:text-zinc-400">assetId</strong> (на главной в инвентаре магазина под карточкой виден ID и кнопка «Копир.» для админа). При сохранении подставляется скин предмета из инвентаря магазина — та же ручная настройка применяется к гостю с тем же market hash и фазой (другой Steam assetId).
           <span className="mt-1 block">
-            <strong>База</strong> = фикс. USD или каталог; для режима «Наценка %» база = каталог × (1 + ваш % / 100). Затем к базе применяются скидка гостя и наценка магазина из блока выше.
+            <strong>База</strong> = фикс. USD или каталог; для режима «Наценка %» база = каталог × (1 + ваш % / 100). Затем к базе применяются коррекция для пользователя и наценка магазина из блока выше.
           </span>
         </p>
 

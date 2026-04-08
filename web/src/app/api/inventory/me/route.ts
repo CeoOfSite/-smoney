@@ -1,12 +1,16 @@
 /**
- * GET /api/inventory/me — logged-in user's own CS2 inventory.
- * Requires auth + saved trade URL (for guest users).
- * Owner can also call this but typically uses /owner.
+ * GET /api/inventory/me — CS2 инвентарь для левой колонки.
+ * При сохранённой trade URL всегда грузим гостевой инвентарь по derivedSteamId из ссылки
+ * (в т.ч. для аккаунта OWNER_STEAM_ID при подмене URL), иначе для владельца магазина — owner snapshot.
  */
 import { NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
-import { resolveGuestInventoryTargetSteamId } from "@/lib/guest-inventory-target";
+import {
+  guestTradeUrlHttpRejection,
+  resolveGuestInventoryTargetSteamId,
+  warnIfGuestSteamIdEqualsOwner,
+} from "@/lib/guest-inventory-target";
 import { getCached, refreshCooldownRemainingUser, setCache } from "@/lib/inventory-cache";
 import { fetchGuestInventory, fetchOwnerInventory } from "@/lib/steam-inventory";
 import type { NormalizedItem } from "@/lib/steam-inventory";
@@ -20,54 +24,65 @@ export async function GET() {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const isOwner = user.steamId === process.env.OWNER_STEAM_ID;
+  const ownerSteamId = process.env.OWNER_STEAM_ID ?? "";
+  const isPlatformOwner = ownerSteamId !== "" && user.steamId === ownerSteamId;
+  const guestTargetSteamId = resolveGuestInventoryTargetSteamId(user);
 
-  const guestTargetSteamId = !isOwner ? resolveGuestInventoryTargetSteamId(user) : null;
-  const cacheKeySteamId = isOwner ? user.steamId : guestTargetSteamId;
+  if (guestTargetSteamId) {
+    warnIfGuestSteamIdEqualsOwner("inventory/me", guestTargetSteamId);
 
-  if (!isOwner && user.tradeUrl && !guestTargetSteamId) {
-    return NextResponse.json(
-      { error: "invalid_trade_url", message: "Сохранённая trade-ссылка некорректна. Укажите ссылку заново." },
-      { status: 400 },
-    );
+    let items: NormalizedItem[] | null = await getCached(guestTargetSteamId);
+    if (!items) {
+      const result = await fetchGuestInventory(user.tradeUrl!);
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 502 });
+      }
+      items = result.items;
+      await setCache(guestTargetSteamId, items);
+    }
+
+    const enriched = await enrichWithPrices(items, "guest");
+    return NextResponse.json({
+      items: enriched,
+      count: enriched.length,
+      refreshCooldownRemainingMs: await refreshCooldownRemainingUser(user.steamId),
+    });
   }
 
-  let items: NormalizedItem[] | null =
-    cacheKeySteamId != null ? await getCached(cacheKeySteamId) : null;
-
-  if (!items) {
-    if (isOwner) {
+  if (isPlatformOwner) {
+    const cacheKeySteamId = user.steamId;
+    let items: NormalizedItem[] | null = await getCached(cacheKeySteamId);
+    if (!items) {
       const result = await fetchOwnerInventory();
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: 502 });
       }
       items = result.items;
-    } else {
-      if (!user.tradeUrl) {
-        return NextResponse.json(
-          { error: "trade_url_required", message: "Сначала сохраните вашу trade-ссылку" },
-          { status: 400 },
-        );
-      }
-      const result = await fetchGuestInventory(user.tradeUrl);
-      if (!result.ok) {
-        return NextResponse.json({ error: result.error }, { status: 502 });
-      }
-      items = result.items;
-    }
-    if (cacheKeySteamId != null) {
       await setCache(cacheKeySteamId, items);
     }
+    const enriched = await enrichWithPrices(items, "owner");
+    return NextResponse.json({
+      items: enriched,
+      count: enriched.length,
+      refreshCooldownRemainingMs: await refreshCooldownRemainingUser(user.steamId),
+    });
   }
 
-  const side = isOwner ? "owner" : "guest";
-  const enriched = await enrichWithPrices(items, side);
+  if (user.tradeUrl?.trim()) {
+    const rej = guestTradeUrlHttpRejection(user);
+    return NextResponse.json(
+      rej ?? {
+        error: "invalid_trade_url",
+        message: "Сохранённая trade-ссылка некорректна. Укажите ссылку заново.",
+      },
+      { status: 400 },
+    );
+  }
 
-  return NextResponse.json({
-    items: enriched,
-    count: enriched.length,
-    refreshCooldownRemainingMs: await refreshCooldownRemainingUser(user.steamId),
-  });
+  return NextResponse.json(
+    { error: "trade_url_required", message: "Сначала сохраните вашу trade-ссылку" },
+    { status: 400 },
+  );
 }
 
 async function enrichWithPrices(items: NormalizedItem[], side: "owner" | "guest") {

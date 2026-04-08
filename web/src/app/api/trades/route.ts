@@ -11,7 +11,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { tradeWhereFromAdminStatusTab } from "@/lib/admin-trade-list";
 import { buildOwnerPublicInventoryItems } from "@/lib/build-owner-public-inventory";
-import { resolveGuestInventoryTargetSteamId } from "@/lib/guest-inventory-target";
+import {
+  guestTradeUrlHttpRejection,
+  resolveGuestInventoryTargetSteamId,
+  warnIfGuestSteamIdEqualsOwner,
+} from "@/lib/guest-inventory-target";
 import { getCached, setCache } from "@/lib/inventory-cache";
 import { centsCountedInTradeTotal, resolvePricesBatch } from "@/lib/pricempire";
 import type { OwnerPublicInventoryRow } from "@/lib/owner-manual-trade-lock";
@@ -155,6 +159,7 @@ export async function POST(request: NextRequest) {
   }
 
   const guestTargetSteamId = resolveGuestInventoryTargetSteamId(user);
+  warnIfGuestSteamIdEqualsOwner("trades POST", guestTargetSteamId);
   let guestInv: NormalizedItem[] | null =
     guestTargetSteamId != null ? await getCached(guestTargetSteamId) : null;
   if (!guestInv) {
@@ -165,8 +170,9 @@ export async function POST(request: NextRequest) {
       );
     }
     if (!guestTargetSteamId) {
+      const rej = guestTradeUrlHttpRejection(user);
       return NextResponse.json(
-        { error: "invalid_trade_url", message: "Сохранённая trade-ссылка некорректна." },
+        rej ?? { error: "invalid_trade_url", message: "Сохранённая trade-ссылка некорректна." },
         { status: 400 },
       );
     }
