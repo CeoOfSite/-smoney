@@ -126,7 +126,7 @@ export function ChatDock() {
   const showBadge = loggedIn === true && unreadFromAdmin > 0 && !open;
 
   return (
-    <div className="fixed bottom-4 right-4 z-[400] flex flex-col items-end gap-2 sm:bottom-6 sm:right-6">
+    <div className="fixed bottom-4 right-4 z-[400] flex flex-col items-end gap-2 lg:bottom-6 lg:right-6">
       {open ? (
         <div
           className="flex h-[min(420px,70dvh)] w-[min(100vw-2rem,380px)] flex-col overflow-hidden rounded-2xl border border-zinc-700/90 bg-[#121214] shadow-2xl shadow-black/50"

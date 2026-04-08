@@ -716,7 +716,7 @@ export default function TradePageClient({
   const canSubmit = tradeSelectionReady && tradeBalance?.ok === true && !tradeModalBusy;
 
   const tradeFilterCardClass =
-    "min-w-0 rounded-2xl border border-zinc-800/70 bg-zinc-950/85 px-3 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] sm:px-4 sm:py-3.5";
+    "min-w-0 rounded-xl border border-zinc-800/70 bg-zinc-950/85 px-2 py-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] sm:rounded-2xl sm:px-3 sm:py-2.5 lg:px-4 lg:py-3.5";
 
   useLayoutEffect(() => {
     const el = overpayBarFillRef.current;
@@ -833,7 +833,7 @@ export default function TradePageClient({
   }
 
   return (
-    <div className="scheme-dark flex h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden bg-[#0d0d0f] text-zinc-100">
+    <div className="scheme-dark flex min-h-[100dvh] min-w-0 flex-col overflow-x-hidden bg-[#0d0d0f] text-zinc-100 lg:h-[100dvh] lg:min-h-0 lg:overflow-hidden">
       {/* Header */}
       <header className="flex shrink-0 items-center justify-between border-b border-zinc-800/60 bg-[#111113] px-4 py-2 sm:px-5">
         <a href="/" className="text-base font-bold tracking-tight text-amber-500">CHEZ<span className="text-zinc-300">TRADING</span></a>
@@ -901,12 +901,12 @@ export default function TradePageClient({
         </div>
       )}
 
-      {/* Main: flex-1 + min-h-0 + h-0 — height = free space below header/banners; grid fills main, not content min-height */}
-      <main className="flex min-h-0 h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {/* Grid: h-full + min-h-0 + overflow-hidden — bounded by main, does not grow with center column content */}
-        <div className="grid h-full min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,39%)_minmax(0,22%)_minmax(0,39%)] grid-rows-[minmax(0,1fr)] items-stretch overflow-hidden">
+      {/* Main: lg uses h-0 + overflow-hidden for fixed viewport; <lg grows with content (page scroll) */}
+      <main className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-visible lg:h-0 lg:overflow-hidden">
+        {/* Grid: 1 col <lg (your → center → shop); 3 cols lg+ */}
+        <div className="grid min-h-0 w-full min-w-0 flex-1 grid-cols-1 items-stretch overflow-visible lg:h-full lg:grid-cols-[minmax(0,39%)_minmax(0,22%)_minmax(0,39%)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
         {/* ─── LEFT: Your Inventory ─── */}
-        <div className="flex h-full min-h-0 min-w-0 flex-col border-r border-zinc-800/50">
+        <div className="flex min-h-0 w-full min-w-0 flex-col border-b border-zinc-800/50 lg:h-full lg:border-b-0 lg:border-r">
           {/* Selected items strip */}
           <SelectedStrip
             label={t("youGive", lang)}
@@ -922,7 +922,7 @@ export default function TradePageClient({
 
           {/* Content — each branch gets flex-1 + overflow-y-auto so it always fills the column */}
           {!authReady ? (
-            <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex w-full flex-col lg:min-h-0 lg:flex-1">
               <PanelHeader
                 search={mySearch}
                 onSearch={setMySearch}
@@ -935,12 +935,12 @@ export default function TradePageClient({
                 lang={lang}
                 controlsDisabled
               />
-              <div className="trade-scroll trade-inventory-scroll px-1.5 py-1 sm:px-2 sm:py-1.5">
+              <div className="trade-scroll trade-inventory-scroll px-1 py-1 sm:px-2 sm:py-1.5">
                 <ItemGridSkeleton lang={lang} />
               </div>
             </div>
           ) : !isLoggedIn ? (
-            <div className="trade-scroll trade-inventory-scroll flex min-h-0 flex-1 flex-col items-center justify-start gap-4 px-6 pb-6 pt-4 text-center">
+            <div className="trade-scroll trade-inventory-scroll flex w-full flex-col items-center justify-start gap-3 px-4 pb-5 pt-3 text-center sm:gap-4 sm:px-6 sm:pb-6 sm:pt-4 lg:min-h-0 lg:flex-1">
               <div className="text-5xl opacity-20">🎮</div>
               <p className="max-w-xs text-sm text-zinc-500">{t("loginPrompt", lang)}</p>
               <a href="/api/auth/steam" className="rounded-lg bg-amber-600 px-6 py-2 text-sm font-semibold text-white hover:bg-amber-500">
@@ -948,7 +948,7 @@ export default function TradePageClient({
               </a>
             </div>
           ) : !hasTradeUrl || editingTradeUrl ? (
-            <div className="trade-scroll trade-inventory-scroll min-h-0 flex-1">
+            <div className="trade-scroll trade-inventory-scroll w-full lg:min-h-0 lg:flex-1">
               <div className="flex flex-col items-center gap-4 px-6 pb-6 pt-4">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-600/20 text-2xl">🔗</div>
                 <h3 className="text-base font-bold text-zinc-100">
@@ -993,7 +993,7 @@ export default function TradePageClient({
               </div>
             </div>
           ) : (
-            <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex w-full flex-col lg:min-h-0 lg:flex-1">
               <PanelHeader
                 search={mySearch}
                 onSearch={setMySearch}
@@ -1007,7 +1007,7 @@ export default function TradePageClient({
                 lang={lang}
                 controlsDisabled={myInventoryLoading}
               />
-              <div className="trade-scroll trade-inventory-scroll px-1.5 py-1 sm:px-2 sm:py-1.5">
+              <div className="trade-scroll trade-inventory-scroll px-1 py-1 sm:px-2 sm:py-1.5">
                 {myInventoryLoading ? (
                   <ItemGridSkeleton lang={lang} />
                 ) : (
@@ -1026,9 +1026,9 @@ export default function TradePageClient({
           )}
         </div>
 
-        {/* ─── CENTER: subtle vertical scroll (.center-scroll in globals.css); inner layout unchanged */}
-        <div className="@container center-scroll flex max-h-full min-h-0 min-w-0 flex-col bg-[#111113]">
-          <div className="flex min-h-0 flex-col gap-1.5 px-1.5 pt-1.5 pb-[112px] sm:gap-2 sm:px-2 sm:pt-2 sm:pb-[120px]">
+        {/* ─── CENTER: lg = internal scroll (.center-scroll); <lg = natural flow + page scroll */}
+        <div className="@container center-scroll flex min-h-0 w-full max-h-none flex-col border-b border-zinc-800/50 bg-[#111113] lg:max-h-full lg:border-b-0">
+          <div className="flex flex-col gap-1 px-1 pt-1 pb-20 sm:gap-1.5 sm:px-1.5 sm:pb-24 lg:min-h-0 lg:gap-2 lg:px-2 lg:pt-2 lg:pb-[120px]">
             {/* Trade analysis */}
             <div className="grid min-w-0 grid-cols-2 gap-1">
               <div className="min-w-0 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-1.5 py-1 text-center">
@@ -1108,7 +1108,7 @@ export default function TradePageClient({
             {/* Divider */}
             <div className="border-t border-zinc-800/50" />
 
-            <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-2 lg:gap-3">
               {/* Filters order: Requirements → Price → Item type → Wear → Float → Others */}
               {/* Requirements */}
               <div className="min-w-0 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-1.5 py-1.5">
@@ -1328,7 +1328,7 @@ export default function TradePageClient({
         </div>
 
         {/* ─── RIGHT: Store Inventory ─── */}
-        <div className="flex h-full min-h-0 min-w-0 flex-col border-l border-zinc-800/50">
+        <div className="flex min-h-0 w-full min-w-0 flex-col border-l-0 lg:h-full lg:border-l lg:border-zinc-800/50">
           <SelectedStrip
             label={t("youGet", lang)}
             sublabel={t("platformInventory", lang)}
@@ -1342,7 +1342,7 @@ export default function TradePageClient({
             lang={lang}
           />
 
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex w-full flex-col lg:min-h-0 lg:flex-1">
             <PanelHeader
               search={ownerSearch}
               onSearch={setOwnerSearch}
@@ -1356,7 +1356,7 @@ export default function TradePageClient({
               controlsDisabled={ownerInventoryLoading}
               showRefreshButton={isAdmin}
             />
-            <div className="trade-scroll trade-inventory-scroll px-1.5 py-1 sm:px-2 sm:py-1.5">
+            <div className="trade-scroll trade-inventory-scroll px-1 py-1 sm:px-2 sm:py-1.5">
               {ownerInventoryLoading ? (
                 <ItemGridSkeleton lang={lang} />
               ) : (
