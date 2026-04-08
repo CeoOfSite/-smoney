@@ -1026,9 +1026,9 @@ export default function TradePageClient({
           )}
         </div>
 
-        {/* ─── CENTER: no overflow-y; max-h-full keeps content within grid row above footer */}
-        <div className="@container flex h-full max-h-full min-h-0 min-w-0 flex-col bg-[#111113]">
-          <div className="flex min-h-0 flex-1 flex-col gap-1.5 px-1.5 pt-1.5 pb-[112px] sm:gap-2 sm:px-2 sm:pt-2 sm:pb-[120px]">
+        {/* ─── CENTER: h-full + overflow-hidden — no internal scroll; clip if filters exceed row */}
+        <div className="@container flex h-full max-h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#111113]">
+          <div className="flex h-full min-h-0 flex-col gap-1.5 px-1.5 pt-1.5 pb-[112px] sm:gap-2 sm:px-2 sm:pt-2 sm:pb-[120px]">
             {/* Trade analysis */}
             <div className="grid min-w-0 grid-cols-2 gap-1">
               <div className="min-w-0 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-1.5 py-1 text-center">
@@ -1318,8 +1318,8 @@ export default function TradePageClient({
               </div>
             </div>
 
-            {/* Fills remaining grid-cell height; panel + disclaimer so the strip isn’t an empty void */}
-            <div className="flex min-h-0 flex-1 flex-col justify-start rounded-lg border border-zinc-800/40 bg-zinc-900/30 px-2 py-2 sm:px-2.5 sm:py-2">
+            {/* Hint only — no flex-1 (avoids stretching center column past grid / under footer) */}
+            <div className="flex flex-col justify-start rounded-lg border border-zinc-800/40 bg-zinc-900/30 px-2 py-2 sm:px-2.5 sm:py-2">
               <p className="text-balance text-left text-[9px] font-medium leading-snug text-zinc-500 sm:text-[10px] sm:leading-snug">
                 {t("centerPanelFiller", lang)}
               </p>
