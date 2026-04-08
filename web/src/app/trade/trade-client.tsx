@@ -1636,24 +1636,49 @@ export default function TradePageClient({
             <p className="mt-0.5 max-w-full text-balance text-[9px] leading-snug text-zinc-600 sm:text-[10px]">
               © 2024–{new Date().getFullYear()} ChezTrading. {t("footerRights", lang)}
             </p>
+            <div
+              className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[9px] sm:text-[10px]"
+              aria-label="Social"
+            >
+              <a
+                href="https://steamcommunity.com/id/chezchezchez/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-zinc-500 transition-colors hover:text-zinc-300"
+              >
+                <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M11.979 0C5.678 0 .522 4.777.051 10.96L0 11.48v.98l1.204 2.579a.65.65 0 0 0 .867.317l7.077-2.857a.65.65 0 0 0 .388-.598V9.78c0-2.71 2.19-4.9 4.9-4.9s4.9 2.19 4.9 4.9-2.19 4.9-4.9 4.9h-.14a.65.65 0 0 0-.43.163l-2.857 2.857a.65.65 0 0 0-.163.43v2.37c0 .36.29.65.65.65h4.55c5.49 0 9.95-4.46 9.95-9.95S17.469 0 11.979 0zM5.52 13.9l-1.77 4.43a.325.325 0 0 0 .397.43l4.75-1.9a.325.325 0 0 0 .197-.298v-.71a3.25 3.25 0 0 1-3.576-1.85z" />
+                </svg>
+                Steam
+              </a>
+              <a
+                href="https://x.com/ChezTrading"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-zinc-500 transition-colors hover:text-zinc-300"
+              >
+                <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" />
+                </svg>
+                X
+              </a>
+            </div>
           </div>
 
           <nav
             className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[9px] text-zinc-600 sm:justify-center sm:gap-x-5 sm:text-[10px] lg:gap-x-6"
             aria-label="Legal"
           >
-            <span className="shrink-0 cursor-default hover:text-zinc-400">{t("footerTos", lang)}</span>
-            <span className="shrink-0 cursor-default hover:text-zinc-400">{t("footerPrivacy", lang)}</span>
+            <Link href="/terms" className="shrink-0 text-zinc-600 hover:text-zinc-400">
+              {t("footerTos", lang)}
+            </Link>
+            <Link href="/privacy" className="shrink-0 text-zinc-600 hover:text-zinc-400">
+              {t("footerPrivacy", lang)}
+            </Link>
             <Link href="/cookies" className="shrink-0 text-zinc-600 hover:text-zinc-400">
               {t("footerCookies", lang)}
             </Link>
           </nav>
-
-          <div className="min-w-0 shrink-0 text-center sm:max-w-[32%] sm:text-right">
-            <p className="text-[9px] text-zinc-600 sm:text-[10px]">
-              Support: <span className="break-all text-zinc-500">support@cheztrading.com</span>
-            </p>
-          </div>
         </div>
 
         <div className="mt-2 w-full min-w-0 border-t border-zinc-800/40 px-1 pt-2 text-center text-[8px] leading-snug text-zinc-700 sm:mt-2.5 sm:px-3 sm:pt-2 sm:text-[9px]">
